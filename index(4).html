@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>marJav Pro - App Vendedor</title>
+
+    <!-- PWA: instalable en el celular -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="marJav Pro">
+
+    <!-- LIBRERÍAS NECESARIAS: PDF Y GENERADOR DE IMÁGENES -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- BASE DE DATOS EN LA NUBE (Firebase Firestore, plan gratuito) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    
+    <style>
+        :root { --primary: #2c3e50; --secondary: #34495e; --bg: #f4f6f7; --success: #27ae60; --accent: #e67e22; --danger: #c0392b; --info: #2980b9; --dark: #2c3e50; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--dark); margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        .app-container { max-width: 900px; margin: 0 auto; background: var(--bg); min-height: 100vh; padding-bottom: 20px;}
+        
+        .header-main { background: var(--primary); color: white; padding: 20px 15px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.15); border-bottom-left-radius: 15px; border-bottom-right-radius: 15px;}
+        .header-main h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0.5px;}
+        .header-main p { margin: 5px 0 0 0; font-size: 13px; opacity: 0.8;}
+        
+        .main-menu { display: grid; grid-template-columns: 1fr; gap: 15px; padding: 20px 15px; }
+        .menu-card { background: white; border-radius: 12px; padding: 20px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05); cursor: pointer; border-left: 6px solid var(--primary); transition: transform 0.2s; display: flex; flex-direction: column; justify-content: center;}
+        .menu-card:active { transform: scale(0.98); background-color: #fcfcfc;}
+        .menu-card h2 { margin: 0 0 8px 0; color: var(--primary); font-size: 18px; }
+        .menu-card p { margin: 0; color: #7f8c8d; font-size: 13px; line-height: 1.4;}
+        
+        .page { display: none; animation: fadeIn 0.3s ease-out; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .top-bar { background: var(--secondary); color: white; padding: 12px 15px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1);}
+        .top-bar-left { display: flex; align-items: center; gap: 15px; }
+        .btn-back { background: rgba(255,255,255,0.2); border: none; color: white; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 5px;}
+        .top-bar h2 { margin: 0; font-size: 16px; font-weight: 600; }
+        
+        .section { background: white; margin: 15px; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #eee;}
+        .section-title { font-size: 14px; font-weight: 800; color: var(--primary); margin-top: 0; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px;}
+        
+        label { font-weight: bold; font-size: 12px; display: block; margin-top: 10px; color: #444; }
+        input, select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 15px; background-color: #fafafa; transition: border-color 0.2s;}
+        input:focus, select:focus { outline: none; border-color: var(--info); background-color: #fff;}
+        
+        .grid-1 { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        
+        button.btn { background-color: var(--primary); color: white; border: none; padding: 14px; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; margin-top: 15px; width: 100%; transition: opacity 0.2s; text-align: center;}
+        button.btn:active { opacity: 0.8; }
+        button.btn-success { background-color: var(--success); }
+        button.btn-accent { background-color: var(--accent); }
+        button.btn-info { background-color: var(--info); }
+        button.btn-danger { background-color: var(--danger); }
+        button.btn-outline { background-color: transparent; color: var(--primary); border: 2px solid var(--primary); }
+        button.btn-small { padding: 8px 12px; font-size: 12px; width: auto; margin-top: 5px; }
+
+        details.familia-collapse { background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        details.familia-collapse summary { background: #f8f9fa; padding: 12px 15px; font-weight: bold; font-size: 13px; color: var(--primary); cursor: pointer; border-bottom: 1px solid #eee; outline: none; list-style: none; display: flex; justify-content: space-between; align-items: center;}
+        details.familia-collapse summary::-webkit-details-marker { display: none; }
+        details.familia-collapse summary::after { content: '▼'; font-size: 10px; color: var(--accent); transition: transform 0.2s;}
+        details[open].familia-collapse summary::after { transform: rotate(180deg); }
+        details[open].familia-collapse summary { background: var(--secondary); color: white; border-bottom: none; }
+
+        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 5px;}
+        table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; } 
+        th, td { padding: 8px 4px; text-align: center; border-bottom: 1px solid #eee; vertical-align: middle;}
+        th { background-color: #f1f3f5; color: var(--primary); font-weight: bold; font-size: 11px; text-transform: uppercase;}
+        td:first-child, th:first-child { text-align: left; padding-left: 10px; font-weight: bold; color: var(--dark); max-width: 140px; white-space: normal; word-wrap: break-word; line-height: 1.2;}
+        
+        .input-sm { width: 100%; min-width: 45px; max-width: 65px; padding: 8px 4px; font-size: 13px; text-align: center; border: 1px solid #ccc; border-radius: 6px; background-color: #fff; margin: 0 auto; display: block; box-sizing: border-box;}
+        .input-sm:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(230, 126, 34, 0.2);}
+        .input-sm.manual { background-color: #fff3cd; border-color: #ffe69c; color: #856404; font-weight: bold; }
+        .input-sm.proveedor { background-color: #e8f4f8; border-color: #bee5eb; color: #0c5460; font-weight: bold; }
+        
+        .input-pres-item { width: 100%; font-size: 10px; text-align: center; border: none; background: transparent; color: var(--accent); font-weight: bold; padding: 2px 0; margin-bottom: 2px; outline: none; }
+        .input-pres-item:focus { border-bottom: 1px solid var(--accent); }
+
+        .tabla-consignacion th { font-size: 9px; padding: 6px 2px; }
+        .tabla-consignacion td { font-size: 11px; padding: 4px 2px; border-right: 1px solid #eee; }
+        .tabla-consignacion td:last-child { border-right: none; }
+        .tabla-consignacion .fam-row td { background-color: #d1d5db; color: #333; font-weight: bold; text-align: center; font-size: 12px; letter-spacing: 1px; padding: 8px; border: 1px solid #bbb; text-transform: uppercase; }
+        .tabla-consignacion .input-cons { min-width: 35px; max-width: 50px; padding: 4px 0; font-size: 12px; height: 26px; border: 1px solid #aaa; border-radius: 4px;}
+        
+        .card-item { border: 1px solid #e0e0e0; border-left: 4px solid var(--primary); padding: 15px; border-radius: 8px; margin-bottom: 12px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.04);}
+        .badge { padding: 5px 10px; border-radius: 12px; font-size: 10px; font-weight: bold; color: white; display: inline-block; text-transform: uppercase; letter-spacing: 0.5px;}
+        .badge-pending { background-color: var(--accent); }
+        .badge-done { background-color: var(--success); }
+        
+        .chk-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .chk-label { font-weight: 600; display: flex; align-items: center; gap: 8px; font-size: 13px; background: #f8f9fa; padding: 8px 12px; border-radius: 20px; border: 1px solid #e9ecef; cursor:pointer;}
+        .chk-label input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); cursor:pointer;}
+        
+        .export-actions { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;}
+        .export-actions button { margin-top: 0; flex: 1; min-width: 140px;}
+
+        @media (max-width: 600px) {
+            .grid-2 { grid-template-columns: 1fr; gap: 10px;}
+            .header-main h1 { font-size: 22px; }
+            .section { margin: 10px; padding: 12px; }
+            table { font-size: 11px; }
+            .input-sm { padding: 6px 2px; font-size: 12px;}
+            td:first-child, th:first-child { max-width: 110px; font-size: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading-overlay" style="position:fixed; inset:0; background:#2c3e50; color:white; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:9999; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <div style="font-size:42px; margin-bottom:15px;">☁️</div>
+    <div style="font-size:16px; font-weight:bold;">Conectando marJav Pro...</div>
+    <div style="font-size:12px; opacity:0.7; margin-top:8px;">Sincronizando datos de la nube</div>
+</div>
+
+<div class="app-container">
+
+    <!-- DASHBOARD -->
+    <div id="page-dashboard" class="page active">
+        <div class="header-main">
+            <h1>marJav Pro</h1>
+            <p>Sistema Integral de Gestión (Móvil)</p>
+            <p id="msg-rescate" style="color:#2ecc71; font-weight:bold; margin-top:10px; font-size:14px; display:none;"></p>
+            <p id="sync-status" style="font-size:11px; margin-top:8px; opacity:0.85;">☁️ Conectando...</p>
+        </div>
+        <div class="main-menu">
+            <button class="btn btn-success" style="margin-top:0; padding:18px; font-size:16px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="forzarGuardadoManual()">💾 GUARDAR TODOS LOS CAMBIOS</button>
+            <div class="menu-card" style="border-color: var(--info);" onclick="nav('page-m1')">
+                <h2 style="color: var(--info);">Módulo 1: Listas y Proveedor</h2>
+                <p>Catálogo base, ocultado y exportación a WhatsApp/PDF</p>
+            </div>
+            <div class="menu-card" style="border-color: var(--success);" onclick="nav('page-m2')">
+                <h2 style="color: var(--success);">Módulo 2: Consignaciones</h2>
+                <p>Planillas de locales y gestión de stock histórico</p>
+            </div>
+            <div class="menu-card" style="border-color: var(--accent);" onclick="nav('page-m3')">
+                <h2 style="color: var(--accent);">Módulo 3: Ventas</h2>
+                <p>Armado de pedidos y remitos directos</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- MÓDULO 1: LISTAS -->
+    <div id="page-m1" class="page">
+        <div class="top-bar">
+            <div class="top-bar-left">
+                <button class="btn-back" onclick="nav('page-dashboard')">← Inicio</button><h2>📋 M1: Listas</h2>
+            </div>
+        </div>
+        
+        <div id="m1-editor-panel">
+            <div class="section">
+                <h3 class="section-title">1. Crear Producto y Familia</h3>
+                <div class="grid-2">
+                    <div><label>Nombre del Producto:</label><input type="text" id="m1-prod-nombre" placeholder="Ej: Mix Eco Banana"></div>
+                    <div>
+                        <label>Familia (Categoría):</label>
+                        <input type="text" id="m1-prod-familia" list="datalist-familias" placeholder="Ej: Mix de Frutos Secos">
+                        <datalist id="datalist-familias"></datalist>
+                    </div>
+                </div>
+                <div class="grid-1" style="margin-top: 10px;">
+                    <div><label>Descripción (Opcional):</label><input type="text" id="m1-prod-desc" placeholder="Ej: contiene almendras, nueces, pasas..."></div>
+                </div>
+                
+                <div class="grid-2" style="align-items: center; margin-top: 10px;">
+                    <div><label>Costo Base Proveedor ($):</label><input type="number" id="m1-prod-costo" placeholder="0.00"></div>
+                    <div style="margin-top: 25px;"><label class="chk-label"><input type="checkbox" id="m1-prod-unidad"> Se vende por Unidad</label></div>
+                </div>
+                <button class="btn btn-info" onclick="m1_guardarProducto()">➕ Guardar Nuevo Producto</button>
+            </div>
+
+            <div class="section" style="background:#fff3cd; border-color:#ffe69c;">
+                <h3 class="section-title" style="color:#856404; border-bottom-color:#ffe69c;">🎁 2. Crear Combo / Oferta</h3>
+                <div class="grid-2">
+                    <div><label>Nombre del Combo:</label><input type="text" id="m1-combo-nombre" placeholder="Ej: Combo Familiar"></div>
+                    <div><label>Precio Final Fijo ($):</label><input type="number" id="m1-combo-precio" placeholder="0.00"></div>
+                </div>
+                <div class="grid-1" style="margin-top: 10px;">
+                    <div><label>Descripción / Contenido:</label><input type="text" id="m1-combo-desc" placeholder="Ej: 1kg Mix Tropical + 500g Nuez"></div>
+                </div>
+                <button class="btn btn-accent" style="background:#e67e22;" onclick="m1_guardarCombo()">🎁 Guardar Combo Fijo</button>
+            </div>
+
+            <div class="section">
+                <h3 class="section-title">3. Crear Lista Personalizada</h3>
+                <div class="grid-2">
+                    <div><label>Nombre de la Lista:</label><input type="text" id="m1-lista-nombre" placeholder="Ej: Revendedores Sur"></div>
+                    <div><label>Margen General (%):</label><input type="number" id="m1-lista-margen" placeholder="Ej: 40"></div>
+                </div>
+                <label>Columnas / Presentaciones Iniciales:</label>
+                <div class="chk-group">
+                    <label class="chk-label"><input type="checkbox" class="chk-col" value="5kg"> 5 Kg</label>
+                    <label class="chk-label"><input type="checkbox" class="chk-col" value="1kg"> 1 Kg</label>
+                    <label class="chk-label"><input type="checkbox" class="chk-col" value="500g"> 500 g</label>
+                    <label class="chk-label"><input type="checkbox" class="chk-col" value="250g"> 250 g</label>
+                    <label class="chk-label"><input type="checkbox" class="chk-col" value="100g"> 100 g</label>
+                    <label class="chk-label"><input type="checkbox" class="chk-col" value="unidad" checked> Unidad</label>
+                </div>
+                <button class="btn btn-success" onclick="m1_crearLista()">➕ Crear Lista Nueva</button>
+            </div>
+        </div>
+
+        <div class="section" style="padding: 10px 5px; background: transparent; border: none; box-shadow: none;">
+            <div id="m1-header-edicion" style="background: #fff; padding: 15px; border-radius: 12px; margin-bottom: 10px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                <h3 class="section-title" style="margin-bottom: 10px;">4. Editor de Listas (Ocultar/Editar)</h3>
+                <select id="m1-lista-select" onchange="m1_renderMatrizLista()"></select>
+                <div id="m1-opciones-lista" style="background:#f4f6f7; padding:10px; border-radius:8px; margin-top:10px; display:none; flex-wrap:wrap; gap:10px; align-items:center;"></div>
+            </div>
+            
+            <div id="m1-matriz-container"></div>
+            
+            <div class="export-actions" id="m1-export-actions" style="display:none; padding: 0 10px;">
+                <!-- Los botones se insertan dinámicamente -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MÓDULO 2: CONSIGNACIONES -->
+    <div id="page-m2" class="page">
+        <div class="top-bar">
+            <div class="top-bar-left">
+                <button class="btn-back" onclick="nav('page-dashboard')">← Inicio</button><h2>🏪 M2: Consignaciones</h2>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h3 class="section-title">1. Gestión de Locales</h3>
+            <div class="grid-2">
+                <input type="text" id="m2-cli-nombre" placeholder="Nombre Comercial / Local">
+                <input type="text" id="m2-cli-email" placeholder="Email del Local">
+            </div>
+            <button class="btn btn-success" onclick="m2_guardarCliente()">👤 Registrar Local</button>
+        </div>
+
+        <div class="section" style="padding: 10px 5px; background: transparent; border: none; box-shadow: none;">
+            <div style="background: #fff; padding: 15px; border-radius: 12px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                <h3 class="section-title">2. Planilla de Visita (Local)</h3>
+                <label>Seleccionar Local para abrir planilla:</label>
+                <select id="m2-cliente-select" onchange="m2_abrirPlanillaMaestra()"></select>
+            </div>
+            
+            <div id="m2-planilla-container" style="display:none; margin-top:10px;"></div>
+        </div>
+
+        <div class="section">
+            <h3 class="section-title">3. Historial de Visitas</h3>
+            <label>Ver historial de:</label>
+            <select id="m2-historial-cliente" onchange="m2_renderHistorial()"></select>
+            <div id="m2-historial-container" style="margin-top:15px;"></div>
+        </div>
+    </div>
+
+    <!-- MÓDULO 3: VENTAS -->
+    <div id="page-m3" class="page">
+        <div class="top-bar">
+            <div class="top-bar-left">
+                <button class="btn-back" onclick="nav('page-dashboard')">← Inicio</button><h2>📦 M3: Ventas</h2>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h3 class="section-title">1. Armar Solicitud / Remito</h3>
+            <div class="grid-2">
+                <div><label>Fecha:</label><input type="date" id="m3-fecha"></div>
+                <div><label>Lista a Aplicar:</label><select id="m3-lista-select" onchange="m3_renderSelectorProductos()"></select></div>
+            </div>
+            <label>Cliente / Comprador:</label>
+            <input type="text" id="m3-cliente" placeholder="Nombre del Cliente">
+            
+            <div style="margin-top:15px;">
+                <label>Seleccionar Productos:</label>
+                <div id="m3-productos-acordeon" style="margin-top: 10px;">
+                    <p style="font-size:12px; color:#666; background:#fff; padding:10px; border-radius:6px; border:1px solid #ddd;">Seleccioná una lista primero.</p>
+                </div>
+            </div>
+            
+            <div class="table-responsive" style="margin-top:15px; border-top:2px solid #eee; padding-top:15px;">
+                <h4 style="margin:0 0 10px 0; color:var(--primary);">Carrito Actual</h4>
+                <table>
+                    <thead><tr><th>Cant</th><th>Producto</th><th>Subtotal</th><th>X</th></tr></thead>
+                    <tbody id="m3-carrito-body"></tbody>
+                </table>
+            </div>
+            
+            <div style="background: #eef; padding: 12px; border-radius: 8px; margin-top: 15px; text-align: right;">
+                <h3 style="margin:0; color:var(--primary); font-size: 18px;">Total Remito: $<span id="m3-total">0</span></h3>
+            </div>
+            <button class="btn btn-accent" onclick="m3_guardarRemito()">💾 Generar Solicitud / Remito</button>
+        </div>
+
+        <div class="section" style="background: transparent; border: none; padding: 0; box-shadow: none;">
+            <div style="background: #fff; padding: 15px; border-radius: 12px; border: 1px solid #eee;">
+                <h3 class="section-title">2. Gestión de Pedidos</h3>
+                <div id="m3-pedidos-container"></div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // ==========================================
+    // DATA PROVEEDOR Y BASE DE DATOS
+    // ==========================================
+    const catalogoProveedor = [
+        {f:"Mix de Frutos Secos", n:"Mix eco banana", d:"contiene almendras, nueces, pasas morenas y rubias, mani sin sal y chips de banana", c:6200},
+        {f:"Mix de Frutos Secos", n:"Mix economico", d:"contiene almendras, nueces, pasas morenas y rubias, mani sin sal", c:5706},
+        {f:"Mix de Frutos Secos", n:"Mix tropical", d:"Contiene almendras, nueces, pasas rubias y morenas, mani sin sal, chips banana, anana en cubos", c:8842},
+        {f:"Mix de Frutos Secos", n:"Mix cervecero", d:"contiene almendras, maiz frito, girasol, mani crocante y mani con sal", c:6010},
+        {f:"Mix de Frutos Secos", n:"Mix premium", d:"contiene almendras, nueces mariposa, pasas rubias y morenas, caju entero", c:11330},
+        {f:"Mix de Frutos Secos", n:"Mix europeo", d:"contiene almendras, nueces mariposa y cuartos, caju entero y avellanas", c:19415},
+        {f:"Mix de Frutos Secos", n:"Mix seco", d:"contiene almendras, nueces mariposa y cuartos, caju entero, mani sin sal", c:11170},
+        {f:"Mix de Frutos Secos", n:"Mix patagonico", d:"contiene almendras, nueces mariposa, pasas morenas, caju entero, frutilla y arandanos", c:12916},
+        {f:"Mix de Frutos Secos", n:"Granola Energetica", d:"Avena, Miel, Nuez, Almendra, Coco, Sésamo, Girasol, Mani, Copos, Pasas de Uva, Lino", c:5409},
+        {f:"Mix de Frutos Secos", n:"Granola POP", d:"Copos, quinoa pop, girasol, arandanos, lino, mani, almendras y coco rallado", c:6000},
+        {f:"Mix de Frutos Secos", n:"Mix Pan dulce", d:"contiene almendras, nueces mariposa, caju entero, Fruta escurrida, Avellanas, pasas de uva rubias y morenas", c:9000},
+        {f:"Frutas Secas Peladas", n:"Almendra Non Pareil 4 Nacional", d:"", c:22105},
+        {f:"Frutas Secas Peladas", n:"Almendra Guara 4 Nacional", d:"", c:19904},
+        {f:"Frutas Secas Peladas", n:"Almendra Non Pareil 27/30 Importada", d:"", c:22105},
+        {f:"Frutas Secas Peladas", n:"Almendra Carmel Supreme", d:"", c:22105},
+        {f:"Frutas Secas Peladas", n:"Almendra Partida Nacional", d:"", c:16591},
+        {f:"Frutas Secas Peladas", n:"Avellanas peladas 13/15", d:"", c:33614},
+        {f:"Frutas Secas Peladas", n:"Nueces Mariposa Extralight", d:"Cosecha 2026", c:13200},
+        {f:"Frutas Secas Peladas", n:"Nueces mariposa light", d:"Sin stock", c:13200},
+        {f:"Frutas Secas Peladas", n:"Nueces cuartos Extralight", d:"sin stock", c:13000},
+        {f:"Frutas Secas Peladas", n:"Castañas de caju W4 Nat. Brasil", d:"", c:16199},
+        {f:"Frutas Secas Peladas", n:"Castañas de caju W4 Nat - Vietnam", d:"", c:13263},
+        {f:"Frutas Secas Peladas", n:"Castañas de Para enteras Importadas", d:"NUEVO", c:35500},
+        {f:"Frutas Secas Peladas", n:"Castañas de caju tostadas y saladas", d:"", c:16093},
+        {f:"Frutas Secas Peladas", n:"Pistachos tostados salados C/ cascara", d:"", c:35718},
+        {f:"Maní", n:"Mani tostado con sal Premium", d:"", c:2950},
+        {f:"Maní", n:"Mani tostado sin sal Premium", d:"", c:2600},
+        {f:"Maní", n:"Mani crocante Japones", d:"", c:6300},
+        {f:"Maní", n:"Garrapiñada de mani", d:"", c:4600},
+        {f:"Maní", n:"Pasta de Mani 100% Natural", d:"", c:2650},
+        {f:"Harinas y Azúcar", n:"Harina de almendras con piel 100% Pureza", d:"", c:19854},
+        {f:"Harinas y Azúcar", n:"Harina de coco", d:"", c:5515},
+        {f:"Harinas y Azúcar", n:"Harina de garbanzos", d:"sin stock", c:2019},
+        {f:"Harinas y Azúcar", n:"Harina de arroz", d:"", c:1916},
+        {f:"Harinas y Azúcar", n:"Harina integral super fina", d:"sin stock", c:1711},
+        {f:"Condimentos & Hierbas", n:"Sal Rosada fina del Himalaya", d:"", c:2471},
+        {f:"Condimentos & Hierbas", n:"Hibiscus flor de Jamaica", d:"NUEVO", c:14000},
+        {f:"Semillas", n:"Mix de 4 semillas", d:"lino, chia, sesamo y girasol", c:3916},
+        {f:"Semillas", n:"Semillas de zapallo PREMIUM", d:"", c:9700},
+        {f:"Semillas", n:"Semillas de girasol pelado grande premium", d:"", c:3956},
+        {f:"Semillas", n:"Semillas de chia PREMIUM", d:"", c:7475},
+        {f:"Semillas", n:"Semillas de lino", d:"", c:3465},
+        {f:"Semillas", n:"Semillas de sesamo integral premium", d:"", c:2914},
+        {f:"Semillas", n:"Psyllium", d:"Sin stock", c:13363},
+        {f:"Semillas", n:"Maiz pisingallo", d:"", c:1851},
+        {f:"Semillas", n:"Maiz frito salado tradicional", d:"", c:9880},
+        {f:"Semillas", n:"Quinoa Blanca importada", d:"", c:7433},
+        {f:"Frutos Desecados", n:"Arandanos deshidratados", d:"", c:14718},
+        {f:"Frutos Desecados", n:"Pasas de uva jumbo Superior", d:"", c:6200},
+        {f:"Frutos Desecados", n:"Pasas de uva flame Premium", d:"", c:4200},
+        {f:"Frutos Desecados", n:"Pasas de uva rubias Premium", d:"", c:8500},
+        {f:"Frutos Desecados", n:"Ciruelas sin carozo grandes 88/110", d:"", c:8300},
+        {f:"Frutos Desecados", n:"Higos negros", d:"sin stock", c:8150},
+        {f:"Frutos Desecados", n:"Datiles con carozo Deglet", d:"", c:6911},
+        {f:"Frutos Desecados", n:"Tomates deshidratados", d:"", c:12988},
+        {f:"Frutas Azucaradas", n:"Chips de banana Enteros", d:"", c:10300},
+        {f:"Frutas Azucaradas", n:"Papaya en cubos Multicolor", d:"NUEVO", c:16210},
+        {f:"Frutas Azucaradas", n:"Anana en cubos rojos", d:"sin stock", c:18550},
+        {f:"Frutas Azucaradas", n:"Anana en cubos verdes", d:"sin stock", c:18550},
+        {f:"Frutas Azucaradas", n:"Coco rallado HIGH fat 65% Premium", d:"", c:8273},
+        {f:"Frutas Azucaradas", n:"Coco en escamas", d:"", c:11531},
+        {f:"Frutas Azucaradas", n:"Fruta escurrida", d:"", c:4100},
+        {f:"Legumbres", n:"Arveja Partida", d:"sin stock", c:1628},
+        {f:"Legumbres", n:"Lenteja Nacional", d:"sin stock", c:2729},
+        {f:"Legumbres", n:"Garbanzo Calibre 7", d:"", c:1821},
+        {f:"Legumbres", n:"Poroto Aduki", d:"", c:2129},
+        {f:"Legumbres", n:"Poroto Colorado", d:"", c:2500},
+        {f:"Legumbres", n:"Poroto Mung", d:"", c:2075},
+        {f:"Legumbres", n:"Poroto Negro Lustrado", d:"", c:1901},
+        {f:"Legumbres", n:"Poroto Pallares", d:"", c:5334},
+        {f:"Cereales", n:"Almohaditas rellenas de frutilla", d:"", c:6804},
+        {f:"Cereales", n:"Almohaditas rellenas de avellana", d:"", c:6804},
+        {f:"Cereales", n:"Almohaditas rellenas de limon", d:"", c:6804},
+        {f:"Cereales", n:"Almohaditas rellenas de Chocolate", d:"", c:7517},
+        {f:"Cereales", n:"Aritos Frutales", d:"", c:5617},
+        {f:"Cereales", n:"Aritos con miel", d:"", c:5603},
+        {f:"Cereales", n:"Bolitas de chocolate", d:"", c:5953},
+        {f:"Cereales", n:"Copos de maiz sin azucar", d:"", c:2618},
+        {f:"Cereales", n:"Copos de maiz Con azucar", d:"", c:2883},
+        {f:"Cereales", n:"Fibras de salvado", d:"sin stock", c:4689},
+        {f:"Cereales", n:"Avena Arrollada Instantanea", d:"", c:1979},
+        {f:"Cereales", n:"Arroz largo fino Integral", d:"sin stock", c:1538},
+        {f:"Cereales", n:"Arroz integral Yamani", d:"", c:2163},
+        {f:"Productos con Chocolate", n:"Almendras con chocolate de leche", d:"", c:21600},
+        {f:"Productos con Chocolate", n:"Pasas de uva con chocolate de leche", d:"", c:24549},
+        {f:"Productos con Chocolate", n:"Mani con chocolate semi amargo", d:"", c:13250},
+        {f:"Productos con Chocolate", n:"Chips de chocolate semi amargo", d:"", c:9802},
+        {f:"Productos con Chocolate", n:"Lentejas de chocolate multicolor", d:"sin stock", c:22280},
+        {f:"Productos con Chocolate", n:"Chocolate Moldeo Blanco Tabletas", d:"", c:7849}
+    ];
+
+    // ==========================================
+    // CONFIGURACIÓN DE FIREBASE (completar con tus datos)
+    // ==========================================
+    // 1) Andá a https://console.firebase.google.com → Crear proyecto (gratis)
+    // 2) Agregá una app "Web" (ícono </>) y copiá el firebaseConfig que te da
+    // 3) Pegalo acá abajo, reemplazando estos valores de ejemplo
+    // 4) En el menú "Firestore Database" del proyecto, creá la base en modo "producción" o "prueba"
+    const firebaseConfig = {
+        apiKey: "AIzaSyDOR5J8h2aA7JHr27RwNR7tXXTMHFMKI4o",
+        authDomain: "marjav-pro.firebaseapp.com",
+        projectId: "marjav-pro",
+        storageBucket: "marjav-pro.firebasestorage.app",
+        messagingSenderId: "240648699932",
+        appId: "1:240648699932:web:2b252bd15e6a6eae96dfd9"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const fs = firebase.firestore();
+    try { fs.enablePersistence({ synchronizeTabs: true }); } catch(e) { /* ok si ya estaba habilitado */ }
+
+    // Todo el negocio guarda sus datos en UN solo documento en la nube.
+    // Si en el futuro querés separar por vendedor, cambiá 'principal' por otro nombre.
+    const DOC_REF = fs.collection('marjavpro').doc('principal');
+
+    function emptyDB() {
+        return {
+            productos: [], familias: [], listas: [], clientes: [],
+            stock_consignacion: {}, historial_consignacion: [], ventas: [],
+            precios_manuales: {}, pres_manuales: {}
+        };
+    }
+
+    function cargarLegacyLocalStorage() {
+        let legacy = localStorage.getItem('mjp3_productos');
+        if (!legacy) return null;
+        return {
+            productos: JSON.parse(localStorage.getItem('mjp3_productos')) || [],
+            familias: JSON.parse(localStorage.getItem('mjp3_familias')) || [],
+            listas: JSON.parse(localStorage.getItem('mjp3_listas')) || [],
+            clientes: JSON.parse(localStorage.getItem('mjp3_clientes')) || [],
+            stock_consignacion: JSON.parse(localStorage.getItem('mjp3_stock_cons')) || {},
+            historial_consignacion: JSON.parse(localStorage.getItem('mjp3_hist_cons')) || [],
+            ventas: JSON.parse(localStorage.getItem('mjp3_ventas')) || [],
+            precios_manuales: JSON.parse(localStorage.getItem('mjp3_precios_manuales')) || {},
+            pres_manuales: JSON.parse(localStorage.getItem('mjp3_pres_manuales')) || {}
+        };
+    }
+
+    let db = emptyDB();
+    let actualizados = 0;
+    let idCounter = Date.now();
+    let modoCatalogo = false;
+    let cloudOk = true;
+    let guardadoPendiente = null;
+
+    // Agrega productos nuevos del catálogo proveedor y prolija estructuras viejas.
+    // Se corre siempre al cargar, tanto si los datos vinieron de la nube como de respaldo local.
+    function normalizarDB() {
+        catalogoProveedor.forEach(catItem => {
+            let existe = db.productos.find(p => p.nombre.toLowerCase().trim() === catItem.n.toLowerCase().trim());
+            if (!existe) {
+                db.productos.push({ id: (idCounter++).toString(), nombre: catItem.n, descripcion: catItem.d, familia: catItem.f, costo: catItem.c, esUnidad: false });
+                actualizados++;
+            } else if (!existe.descripcion || existe.descripcion.trim() === "") {
+                existe.descripcion = catItem.d;
+            }
+            if (!db.familias.includes(catItem.f)) db.familias.push(catItem.f);
+        });
+
+        db.listas.forEach(l => {
+            if(!l.ocultos) l.ocultos = [];
+            if(!l.nombresCols) l.nombresCols = {};
+            if(!l.columnas) l.columnas = ['100g'];
+            if(!l.celdasOcultas) l.celdasOcultas = [];
+        });
+        db.clientes.forEach(c => { if(!c.ocultos) c.ocultos = []; });
+
+        for (let cId in db.stock_consignacion) {
+            for (let pId in db.stock_consignacion[cId]) {
+                if (typeof db.stock_consignacion[cId][pId] === 'number') {
+                    db.stock_consignacion[cId][pId] = { cant: db.stock_consignacion[cId][pId], pV: 0 };
+                }
+            }
+        }
+    }
+
+    function actualizarIndicador(texto, color) {
+        let el = document.getElementById('sync-status');
+        if (el) { el.innerText = texto; el.style.color = color; }
+    }
+
+    function saveDB() {
+        // Respaldo local inmediato por si se corta internet
+        localStorage.setItem('mjp3_db_cache', JSON.stringify(db));
+        actualizarIndicador('💾 Guardando...', '#f1c40f');
+        if (guardadoPendiente) clearTimeout(guardadoPendiente);
+        guardadoPendiente = setTimeout(() => {
+            DOC_REF.set(db).then(() => {
+                actualizarIndicador('☁️ Sincronizado', '#2ecc71');
+            }).catch(err => {
+                console.warn('No se pudo sincronizar con la nube:', err);
+                actualizarIndicador('⚠️ Sin conexión (guardado local)', '#e67e22');
+            });
+        }, 700);
+    }
+
+    function forzarGuardadoManual() {
+        saveDB();
+        alert("✅ Cambios guardados. Se están sincronizando con la nube.");
+    }
+
+    async function iniciarApp() {
+        try {
+            let snap = await DOC_REF.get();
+            if (snap.exists && snap.data() && Array.isArray(snap.data().productos)) {
+                db = snap.data();
+            } else {
+                // Primera vez: no hay nada en la nube. Buscamos algo para migrar.
+                let cache = JSON.parse(localStorage.getItem('mjp3_db_cache') || 'null');
+                db = cache || cargarLegacyLocalStorage() || emptyDB();
+                normalizarDB();
+                await DOC_REF.set(db);
+                document.getElementById('loading-overlay').style.display = 'none';
+                actualizarIndicador('☁️ Sincronizado', '#2ecc71');
+                nav('page-dashboard');
+                return;
+            }
+        } catch(e) {
+            console.warn('Sin conexión inicial, usando datos locales:', e);
+            cloudOk = false;
+            let cache = JSON.parse(localStorage.getItem('mjp3_db_cache') || 'null');
+            db = cache || cargarLegacyLocalStorage() || emptyDB();
+        }
+
+        normalizarDB();
+        if (actualizados > 0) saveDB();
+
+        document.getElementById('loading-overlay').style.display = 'none';
+        actualizarIndicador(cloudOk ? '☁️ Sincronizado' : '⚠️ Modo local (sin conexión)', cloudOk ? '#2ecc71' : '#e67e22');
+        nav('page-dashboard');
+    }
+
+    function nav(pageId) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(pageId).classList.add('active');
+        window.scrollTo(0,0);
+        if(pageId === 'page-m1') {
+            modoCatalogo = false;
+            document.getElementById('m1-editor-panel').style.display = 'block';
+            document.getElementById('m1-header-edicion').style.display = 'block';
+            initM1();
+        }
+        if(pageId === 'page-m2') initM2();
+        if(pageId === 'page-m3') initM3();
+    }
+
+    function redondear(precio) {
+        let p = Math.round(precio); let r = p % 100; let b = Math.floor(p / 100) * 100; return r <= 50 ? b : b + 100;
+    }
+
+    // ==========================================
+    // MÓDULO 1: LISTAS Y COLUMNAS EDITABLES
+    // ==========================================
+    function initM1() {
+        let dl = document.getElementById('datalist-familias'); dl.innerHTML = '';
+        db.familias.forEach(f => dl.innerHTML += `<option value="${f}">`);
+        let sel = document.getElementById('m1-lista-select'); 
+        sel.innerHTML = '<option value="">-- Seleccione Lista a Editar --</option>';
+        sel.innerHTML += `<option value="proveedor" style="font-weight:bold; color:var(--info);">🏭 Lista Proveedor (Costo Base / Editar Descripciones)</option>`;
+        db.listas.forEach(l => sel.innerHTML += `<option value="${l.id}">${l.nombre} (Margen: ${l.margen}%)</option>`);
+    }
+
+    function renombrarColumna(lid, colOriginal, nuevoNombre) {
+        let l = db.listas.find(x => x.id === lid);
+        if(l) {
+            if(!l.nombresCols) l.nombresCols = {};
+            l.nombresCols[colOriginal] = nuevoNombre;
+            saveDB(); m1_renderMatrizLista(true); alert("✅ Título de columna actualizado.");
+        }
+    }
+
+    function m1_toggleColumnaLista(lid, col) {
+        let l = db.listas.find(x => x.id === lid);
+        if(!l) return;
+        if(l.columnas.includes(col)) l.columnas = l.columnas.filter(c => c !== col);
+        else {
+            l.columnas.push(col);
+            const order = ['5kg', '1kg', '500g', '250g', '100g', 'unidad'];
+            l.columnas.sort((a,b) => order.indexOf(a) - order.indexOf(b));
+        }
+        saveDB(); m1_renderMatrizLista(true);
+    }
+
+    function m1_guardarProducto() {
+        let nom = document.getElementById('m1-prod-nombre').value;
+        let desc = document.getElementById('m1-prod-desc').value;
+        let fam = document.getElementById('m1-prod-familia').value || 'General';
+        let cos = parseFloat(document.getElementById('m1-prod-costo').value);
+        let un = document.getElementById('m1-prod-unidad').checked;
+        if(!nom || !cos) return alert("⚠️ Complete Nombre y Costo");
+        if(!db.familias.includes(fam)) db.familias.push(fam);
+        db.productos.push({ id: Date.now().toString(), nombre: nom, descripcion: desc, familia: fam, costo: cos, esUnidad: un });
+        saveDB(); initM1(); alert("✅ Producto Guardado Exitosamente");
+        document.getElementById('m1-prod-nombre').value = ''; document.getElementById('m1-prod-desc').value = ''; document.getElementById('m1-prod-costo').value = '';
+    }
+
+    function m1_guardarCombo() {
+        let nom = document.getElementById('m1-combo-nombre').value;
+        let desc = document.getElementById('m1-combo-desc').value;
+        let precio = parseFloat(document.getElementById('m1-combo-precio').value);
+        if(!nom || !precio) return alert("⚠️ Complete Nombre y Precio Final");
+        
+        let fam = '🎁 Combos y Ofertas';
+        if(!db.familias.includes(fam)) db.familias.unshift(fam); 
+        let pId = Date.now().toString();
+        db.productos.push({ id: pId, nombre: nom, descripcion: desc, familia: fam, costo: precio, esUnidad: true });
+        
+        db.listas.forEach(l => { db.precios_manuales[`${l.id}_${pId}_unidad`] = precio; });
+        saveDB(); initM1(); m1_renderMatrizLista(true); alert("✅ Combo Creado con Precio Fijo");
+        document.getElementById('m1-combo-nombre').value = ''; document.getElementById('m1-combo-desc').value = ''; document.getElementById('m1-combo-precio').value = '';
+    }
+
+    function m1_crearLista() {
+        let nom = document.getElementById('m1-lista-nombre').value;
+        let mar = parseFloat(document.getElementById('m1-lista-margen').value) || 40;
+        if(!nom) return alert("⚠️ Ingrese nombre de lista");
+        let cols = [];
+        document.querySelectorAll('.chk-col:checked').forEach(c => cols.push(c.value));
+        if(cols.length === 0) return alert("⚠️ Seleccione al menos una presentación");
+        
+        db.listas.push({ id: Date.now().toString(), nombre: nom, margen: mar, columnas: cols, ocultos: [], celdasOcultas: [], nombresCols: {} });
+        saveDB(); initM1(); alert("✅ Lista Creada");
+        document.getElementById('m1-lista-nombre').value = ''; document.getElementById('m1-lista-margen').value = '';
+    }
+
+    function calcularPrecioBase(costo, colId, esUnidad, margenPorcentaje, nombrePresEditado) {
+        let margen = 1 + (margenPorcentaje / 100); let pBase = costo * margen;
+        if(esUnidad || colId === 'unidad' || (nombrePresEditado && nombrePresEditado.toLowerCase().includes('unidad'))) return redondear(pBase);
+        if (nombrePresEditado) {
+            let str = nombrePresEditado.toLowerCase().trim();
+            let num = parseFloat(str.replace(/[^0-9.,]/g, '').replace(',', '.'));
+            if (!isNaN(num) && num > 0) {
+                if (str.includes('kg')) return redondear((pBase * num) * 0.95);
+                else if (str.includes('g')) return redondear((pBase / 1000) * num * 1.05);
+            }
+        }
+        if(colId === '5kg') return redondear((pBase * 5) * 0.95);
+        if(colId === '1kg') return redondear(pBase);
+        if(colId === '500g') return redondear((pBase / 2) * 1.05);
+        if(colId === '250g') return redondear((pBase / 4) * 1.05);
+        if(colId === '100g') return redondear((pBase / 10) * 1.05);
+        return redondear(pBase);
+    }
+
+    function obtenerPrecioFinal(lid, pid, colId, costo, esUnidad, margen) {
+        let lista = db.listas.find(x => x.id === lid);
+        let colName = (lista && lista.nombresCols && lista.nombresCols[colId]) ? lista.nombresCols[colId] : colId;
+        let key = `${lid}_${pid}_${colId}`;
+        let nombrePres = db.pres_manuales[key] || colName;
+        
+        let calc = calcularPrecioBase(costo, colId, esUnidad, margen, nombrePres);
+        let manual = db.precios_manuales[key];
+        return { calculado: calc, final: manual !== undefined ? manual : calc, isManual: manual !== undefined };
+    }
+
+    function m1_guardarPrecioManual(lid, pid, colId, valorInput) {
+        let val = parseFloat(valorInput);
+        if (lid === 'proveedor') {
+            let prod = db.productos.find(p => p.id === pid);
+            if (prod && !isNaN(val) && val > 0) { prod.costo = val; saveDB(); }
+        } else {
+            let key = `${lid}_${pid}_${colId}`;
+            if (isNaN(val) || valorInput === "") delete db.precios_manuales[key]; 
+            else db.precios_manuales[key] = val;
+            saveDB();
+        }
+        m1_renderMatrizLista(true); 
+    }
+
+    function m1_guardarPresManual(lid, pid, colId, nuevoNombre) {
+        let key = `${lid}_${pid}_${colId}`;
+        let lista = db.listas.find(x => x.id === lid);
+        let colName = (lista && lista.nombresCols && lista.nombresCols[colId]) ? lista.nombresCols[colId] : colId;
+
+        if (!nuevoNombre || nuevoNombre === colName) delete db.pres_manuales[key]; 
+        else db.pres_manuales[key] = nuevoNombre;
+        saveDB(); m1_renderMatrizLista(true); 
+    }
+
+    function m1_editarMargenLista(lid, nuevoMargen) {
+        let lista = db.listas.find(l => l.id === lid); let m = parseFloat(nuevoMargen);
+        if(!isNaN(m)) { lista.margen = m; saveDB(); initM1(); document.getElementById('m1-lista-select').value = lid; m1_renderMatrizLista(true); }
+    }
+
+    function m1_toggleVisibilidad(lid, pid) {
+        let l = db.listas.find(x => x.id === lid);
+        if(!l) return;
+        if(!l.ocultos) l.ocultos = [];
+        if(l.ocultos.includes(pid)) l.ocultos = l.ocultos.filter(i => i !== pid);
+        else l.ocultos.push(pid);
+        saveDB(); m1_renderMatrizLista(true);
+    }
+
+    function m1_toggleCelda(lid, keyCelda) {
+        let l = db.listas.find(x => x.id === lid);
+        if(!l) return;
+        if(!l.celdasOcultas) l.celdasOcultas = [];
+        if(l.celdasOcultas.includes(keyCelda)) l.celdasOcultas = l.celdasOcultas.filter(k => k !== keyCelda);
+        else l.celdasOcultas.push(keyCelda);
+        saveDB(); m1_renderMatrizLista(true);
+    }
+
+    function m1_borrarProductoMaster(pid) {
+        if(confirm("⚠️ ¿Estás COMPLETAMENTE SEGURO de querer borrar este producto? Va a desaparecer de todos lados.")) {
+            db.productos = db.productos.filter(p => p.id !== pid); saveDB(); m1_renderMatrizLista(true);
+        }
+    }
+
+    function m1_editarProductoMaster(pid) {
+        let p = db.productos.find(x => x.id === pid);
+        if(!p) return;
+        let nuevaDesc = prompt(`Editar descripción de ${p.nombre}:\n(Aparecerá en todas las listas y en el PDF)`, p.descripcion || "");
+        if (nuevaDesc !== null) { p.descripcion = nuevaDesc; saveDB(); m1_renderMatrizLista(true); alert("✅ Descripción guardada."); }
+    }
+
+    // --- FUNCIÓN PARA GENERAR IMAGEN PARA WHATSAPP ---
+    function descargarImagenCatalogo() {
+        let catElement = document.getElementById('m1-matriz-container');
+        if(!catElement) return;
+        
+        let btn = document.getElementById('btn-img-wapp');
+        let oldText = btn.innerText;
+        btn.innerText = "⏳ Generando imagen (aguardá un momento)...";
+        
+        html2canvas(catElement, { scale: 2, backgroundColor: "#ffffff" }).then(canvas => {
+            let link = document.createElement('a');
+            link.download = `Catalogo_${new Date().getTime()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            btn.innerText = oldText;
+            alert("✅ ¡Imagen descargada! Ya podés compartirla por WhatsApp.");
+        }).catch(err => {
+            alert("⚠️ Hubo un error al generar la imagen.");
+            btn.innerText = oldText;
+        });
+    }
+
+    function m1_toggleCatalogo() {
+        let listId = document.getElementById('m1-lista-select').value;
+        if(!listId) return alert("Seleccioná una lista primero.");
+        
+        modoCatalogo = !modoCatalogo;
+        
+        if (modoCatalogo) {
+            document.getElementById('m1-editor-panel').style.display = 'none';
+            document.getElementById('m1-header-edicion').style.display = 'none';
+            document.getElementById('m1-export-actions').innerHTML = `
+                <button class="btn btn-success" id="btn-img-wapp" style="flex-basis: 100%; font-size: 16px; padding: 16px; margin-bottom: 10px;" onclick="descargarImagenCatalogo()">📸 DESCARGAR IMAGEN PARA WHATSAPP</button>
+                <button class="btn btn-danger" style="flex-basis: 100%; font-size: 16px; padding: 16px;" onclick="m1_toggleCatalogo()">❌ SALIR DEL MODO CATÁLOGO</button>
+            `;
+        } else {
+            document.getElementById('m1-editor-panel').style.display = 'block';
+            document.getElementById('m1-header-edicion').style.display = 'block';
+            document.getElementById('m1-export-actions').innerHTML = `
+                <button class="btn btn-accent" style="flex-basis: 100%; font-size: 16px; padding: 16px; margin-bottom: 10px;" onclick="m1_toggleCatalogo()">👁️ MODO CATÁLOGO (Lindo para Compartir)</button>
+                <button class="btn btn-outline" style="flex-basis: 100%; margin-bottom: 10px;" onclick="exportarPDF('lista')">📄 Descargar PDF de esta lista</button>
+                <button class="btn btn-outline" style="flex-basis: 100%;" onclick="enviarMail('lista')">✉️ Enviar como Texto por Wapp</button>
+            `;
+        }
+        
+        m1_renderMatrizLista(true);
+    }
+
+    function m1_renderMatrizLista(mantenerEstado = false) {
+        let listId = document.getElementById('m1-lista-select').value;
+        let cont = document.getElementById('m1-matriz-container');
+        let exp = document.getElementById('m1-export-actions');
+        let opcContainer = document.getElementById('m1-opciones-lista');
+        
+        if(!listId) { cont.innerHTML = ''; exp.style.display = 'none'; opcContainer.style.display = 'none'; return; }
+        
+        let isProveedor = (listId === 'proveedor');
+        let lista = isProveedor ? null : db.listas.find(l => l.id === listId);
+        
+        if (modoCatalogo) {
+            let fechaHoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
+            let catHtml = `
+            <div style="background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; margin-bottom: 20px; border: 1px solid #ddd; padding: 10px;">
+                <div style="background: linear-gradient(135deg, var(--primary), var(--secondary)); color: white; padding: 25px 15px; text-align: center; border-radius: 8px;">
+                    <h2 style="margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px;">${isProveedor ? 'Lista Proveedor' : lista.nombre}</h2>
+                    <p style="margin: 8px 0 0 0; font-size: 13px; color: #ecf0f1;">📅 Actualizada al: ${fechaHoy}</p>
+                </div>
+                <div style="padding: 10px 5px;">
+            `;
+
+            db.familias.forEach(f => {
+                let prods = db.productos.filter(p => p.familia === f);
+                let renderedProducts = 0; let innerHtml = "";
+
+                prods.forEach(p => {
+                    let estaOculto = !isProveedor && lista && lista.ocultos && lista.ocultos.includes(p.id);
+                    if (estaOculto) return;
+
+                    renderedProducts++;
+
+                    innerHtml += `<tr>
+                        <td style="text-align:left; border-bottom:1px solid #f0f0f0; padding:12px 5px; max-width:150px;">
+                            <b style="color:var(--dark); font-size:14px;">${p.nombre}</b>
+                            ${p.descripcion ? `<br><span style="font-size:11px; color:#888;"><i>${p.descripcion}</i></span>` : ''}
+                        </td>`;
+
+                    if (isProveedor) {
+                        innerHtml += `<td style="border-bottom:1px solid #f0f0f0; text-align:center;"><b style="color:var(--info); font-size:15px;">$${p.costo}</b></td>`;
+                    } else {
+                        lista.columnas.forEach(c => {
+                            let keyCelda = `${p.id}_${c}`;
+                            let celdaOculta = lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda);
+
+                            if (celdaOculta || ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad'))) {
+                                innerHtml += `<td style="border-bottom:1px solid #f0f0f0; color:#ccc; text-align:center;">-</td>`;
+                            } else {
+                                let colName = (lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c;
+                                let keyPres = `${lista.id}_${p.id}_${c}`;
+                                let nombrePres = db.pres_manuales[keyPres] || colName;
+                                let precioData = obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen);
+
+                                innerHtml += `<td style="border-bottom:1px solid #f0f0f0; text-align:center; padding: 5px;">
+                                    <div style="font-size:11px; color:var(--accent); font-weight:bold; margin-bottom:3px; text-transform:uppercase;">${nombrePres}</div>
+                                    <div style="font-size:16px; font-weight:900; color:var(--dark);">$${precioData.final}</div>
+                                </td>`;
+                            }
+                        });
+                    }
+                    innerHtml += `</tr>`;
+                });
+
+                if (renderedProducts > 0) {
+                    catHtml += `
+                    <div style="background: var(--accent); color: white; padding: 10px 15px; border-radius: 6px; font-weight: bold; margin-top: 20px; margin-bottom: 5px; text-transform: uppercase; font-size: 13px; letter-spacing: 1px;">
+                        ${f}
+                    </div>
+                    <div class="table-responsive" style="margin-bottom: 10px;">
+                        <table style="border-collapse: collapse; width: 100%;">
+                            <tbody>${innerHtml}</tbody>
+                        </table>
+                    </div>`;
+                }
+            });
+
+            catHtml += `
+                </div>
+                <div style="background: #f8f9fa; border-top: 1px solid #eee; padding: 20px 15px; text-align: center; color: #555; margin-top: 10px; border-radius: 8px;">
+                    <p style="margin: 0; font-size: 15px; color: var(--primary);"><b>📞 Contacto:</b> Javier 1138988346 | Marcela 1157081322</p>
+                    <p style="margin: 8px 0 0 0; font-size: 12px; font-style: italic;">Precios sujetos a modificaciones sin previo aviso.</p>
+                </div>
+            </div>
+            `;
+            
+            cont.innerHTML = catHtml;
+            exp.style.display = 'flex';
+            
+            document.getElementById('m1-export-actions').innerHTML = `
+                <button class="btn btn-success" id="btn-img-wapp" style="flex-basis: 100%; font-size: 16px; padding: 16px; margin-bottom: 10px;" onclick="descargarImagenCatalogo()">📸 DESCARGAR IMAGEN PARA WHATSAPP</button>
+                <button class="btn btn-danger" style="flex-basis: 100%; font-size: 16px; padding: 16px;" onclick="m1_toggleCatalogo()">❌ SALIR DEL MODO CATÁLOGO</button>
+            `;
+            return;
+        }
+
+        let estadosAcordeon = {};
+        if (mantenerEstado) {
+            cont.querySelectorAll('details.familia-collapse').forEach(det => {
+                let famName = det.querySelector('summary span').innerText;
+                estadosAcordeon[famName] = det.open;
+            });
+        }
+
+        let columnasAMostrar = isProveedor ? ['Costo Base'] : lista.columnas;
+
+        if(!isProveedor && lista) {
+            let isChecked = document.getElementById('m1-mostrar-ocultos')?.checked ? 'checked' : '';
+            let checkColsHtml = `
+                <div style="width:100%; margin-top:10px; padding-top:10px; border-top:1px dashed #ccc;">
+                    <b style="font-size:12px; color:var(--primary); display:block; margin-bottom:5px;">Columnas activas en esta lista:</b>
+                    <div class="chk-group">
+                        ${['5kg', '1kg', '500g', '250g', '100g', 'unidad'].map(c => `
+                            <label class="chk-label" style="font-size:11px; padding:4px 8px; cursor:pointer;">
+                                <input type="checkbox" onchange="m1_toggleColumnaLista('${lista.id}', '${c}')" ${lista.columnas.includes(c) ? 'checked' : ''}>
+                                ${(lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c}
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            opcContainer.innerHTML = `
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <b style="font-size:12px; color:var(--primary);">Margen Global (%):</b>
+                    <input type="number" id="m1-edit-margen" value="${lista.margen}" onchange="m1_editarMargenLista('${lista.id}', this.value)" style="width:70px; padding:6px; margin:0; font-size:13px; text-align:center;">
+                </div>
+                <label class="chk-label" style="margin:0; padding:6px 10px; font-size:11px;"><input type="checkbox" id="m1-mostrar-ocultos" onchange="m1_renderMatrizLista(true)" ${isChecked}> Mostrar Ocultados (➕)</label>
+                ${checkColsHtml}
+            `;
+            opcContainer.style.display = 'flex';
+        } else {
+            opcContainer.innerHTML = `<p style="font-size:11px; margin:0; color:var(--danger); font-weight:bold;">Estás editando la lista MAESTRA. Usá el lápiz ✏️ para agregar descripciones, o el tacho 🗑️ para borrar.</p>`;
+            opcContainer.style.display = 'block';
+        }
+
+        let mostrarOcultos = document.getElementById('m1-mostrar-ocultos')?.checked || false;
+        let html = ""; let isFirst = true;
+
+        db.familias.forEach(f => {
+            let prods = db.productos.filter(p => p.familia === f);
+            let renderedProducts = 0; let innerHtml = "";
+
+            prods.forEach(p => {
+                let estaOculto = lista && lista.ocultos && lista.ocultos.includes(p.id);
+                if (estaOculto && !mostrarOcultos && !isProveedor) return;
+                
+                renderedProducts++;
+                let trStyle = estaOculto ? 'opacity: 0.5; background: #fdfdfd;' : '';
+                
+                let btnAccion = isProveedor ? 
+                    `<button onclick="m1_editarProductoMaster('${p.id}')" style="background:none;border:none;cursor:pointer;font-size:15px;color:#2980b9;margin-right:10px;" title="Editar Descripción">✏️</button>
+                     <button onclick="m1_borrarProductoMaster('${p.id}')" style="background:none;border:none;cursor:pointer;font-size:15px;color:red;" title="Borrar Producto">🗑️</button>` 
+                    : 
+                    `<button onclick="m1_editarProductoMaster('${p.id}')" style="background:none;border:none;cursor:pointer;font-size:15px;color:#2980b9;margin-right:10px;" title="Editar Descripción">✏️</button>
+                     <button onclick="m1_toggleVisibilidad('${lista.id}', '${p.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;">${estaOculto ? '➕' : '❌'}</button>`;
+
+                innerHtml += `<tr style="${trStyle}">
+                    <td>
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:5px;">
+                            <span style="${estaOculto ? 'text-decoration:line-through;' : ''}">${p.nombre}</span>
+                            <div style="display:flex; align-items:center;">${btnAccion}</div>
+                        </div>
+                        ${p.descripcion ? `<div style="font-size:10px; color:#888; text-align:left; margin-top:2px;"><i>${p.descripcion}</i></div>` : ''}
+                    </td>`;
+                
+                if (isProveedor) {
+                    innerHtml += `<td>
+                        <div style="display:flex; align-items:center; justify-content:center; gap:2px;">
+                            <span style="font-size:10px; color:#888;">$</span>
+                            <input type="number" class="input-sm proveedor" value="${p.costo}" onchange="m1_guardarPrecioManual('proveedor', '${p.id}', 'costo', this.value)">
+                        </div>
+                    </td>`;
+                } else {
+                    lista.columnas.forEach(c => {
+                        let keyCelda = `${p.id}_${c}`;
+                        let celdaOculta = lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda);
+
+                        if (celdaOculta && !mostrarOcultos) {
+                            innerHtml += `<td style="color:#ccc; font-size:14px;">-</td>`;
+                        } else if ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad')) {
+                            innerHtml += `<td style="color:#ccc; font-size:14px;">-</td>`;
+                        } else {
+                            let colName = (lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c;
+                            let keyPres = `${lista.id}_${p.id}_${c}`;
+                            let nombrePres = db.pres_manuales[keyPres] || colName;
+                            
+                            let precioData = obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen);
+                            let cssClass = precioData.isManual ? "input-sm manual" : "input-sm";
+                            let vMostrar = precioData.isManual ? precioData.final : ""; 
+                            let placeholder = precioData.isManual ? "Auto" : precioData.calculado; 
+                            
+                            let celdaStyle = celdaOculta ? "opacity:0.4; background:#fdfdfd;" : "";
+                            let btnOcultar = celdaOculta 
+                                ? `<button onclick="m1_toggleCelda('${lista.id}', '${keyCelda}')" style="background:none;border:none;cursor:pointer;font-size:11px;padding:0;margin-left:4px;" title="Mostrar este tamaño">➕</button>`
+                                : `<button onclick="m1_toggleCelda('${lista.id}', '${keyCelda}')" style="background:none;border:none;cursor:pointer;font-size:11px;color:red;padding:0;margin-left:4px;" title="No vender este tamaño">🚫</button>`;
+
+                            innerHtml += `<td style="${celdaStyle}">
+                                <div style="display:flex; align-items:center; justify-content:center; border-bottom:1px dashed #ccc; padding-bottom:2px; margin-bottom:2px;">
+                                    <input type="text" class="input-pres-item" value="${nombrePres}" onchange="m1_guardarPresManual('${lista.id}', '${p.id}', '${c}', this.value)" style="border:none; margin:0; width:100%;">
+                                    ${btnOcultar}
+                                </div>
+                                <div style="display:flex; align-items:center; justify-content:center; gap:2px;">
+                                    <span style="font-size:10px; color:#888;">$</span>
+                                    <input type="number" class="${cssClass}" value="${vMostrar}" placeholder="${placeholder}" onchange="m1_guardarPrecioManual('${lista.id}', '${p.id}', '${c}', this.value)" ${celdaOculta ? 'disabled' : ''}>
+                                </div>
+                            </td>`;
+                        }
+                    });
+                }
+                innerHtml += `</tr>`;
+            });
+
+            if(renderedProducts > 0) {
+                let isOpen = mantenerEstado ? (estadosAcordeon[f] === true) : isFirst;
+                html += `<details class="familia-collapse" ${isOpen ? 'open' : ''}>
+                            <summary><span>${f}</span></summary>
+                            <div class="table-responsive">
+                                <table>
+                                    <thead><tr><th>Producto</th>`;
+                
+                columnasAMostrar.forEach(c => {
+                    if (isProveedor) { html += `<th>${c}</th>`; } 
+                    else {
+                        let nCol = (lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c;
+                        html += `<th>
+                            <div style="display:flex; align-items:center; justify-content:center; gap:2px; background:#fff; padding:2px; border-radius:4px; border:1px solid #ddd;">
+                                <input type="text" id="col-edit-${lista.id}-${c}" value="${nCol}" style="background:transparent; border:none; color:var(--primary); font-weight:bold; font-size:10px; text-transform:uppercase; text-align:center; width:100%; padding:0; outline:none; margin:0;" title="Editar nombre de columna">
+                                <button onclick="renombrarColumna('${lista.id}', '${c}', document.getElementById('col-edit-${lista.id}-${c}').value)" style="background:var(--success); color:white; border:none; border-radius:3px; padding:2px 4px; cursor:pointer; font-size:10px;" title="Guardar nombre">💾</button>
+                            </div>
+                        </th>`;
+                    }
+                });
+
+                html += `</tr></thead><tbody>${innerHtml}</tbody></table></div></details>`;
+                isFirst = false;
+            }
+        });
+        
+        cont.innerHTML = html; 
+        exp.style.display = 'flex';
+        
+        exp.innerHTML = `
+            <button class="btn btn-accent" style="flex-basis: 100%; font-size: 16px; padding: 16px; margin-bottom: 10px;" onclick="m1_toggleCatalogo()">👁️ MODO CATÁLOGO (Lindo para Compartir)</button>
+            <button class="btn btn-outline" style="flex-basis: 100%; margin-bottom: 10px;" onclick="exportarPDF('lista')">📄 Descargar PDF de esta lista</button>
+            <button class="btn btn-outline" style="flex-basis: 100%;" onclick="enviarMail('lista')">✉️ Enviar como Texto por Wapp</button>
+        `;
+    }
+
+    // ==========================================
+    // MÓDULO 2: CONSIGNACIONES Y LÓGICA HISTÓRICA
+    // ==========================================
+    function initM2() {
+        let sel = document.getElementById('m2-cliente-select');
+        let selH = document.getElementById('m2-historial-cliente');
+        sel.innerHTML = '<option value="">-- Seleccione Local --</option>';
+        selH.innerHTML = '<option value="">-- Seleccione Local --</option>';
+        db.clientes.forEach(c => {
+            sel.innerHTML += `<option value="${c.id}">${c.nombre}</option>`;
+            selH.innerHTML += `<option value="${c.id}">${c.nombre}</option>`;
+        });
+    }
+
+    function m2_guardarCliente() {
+        let n = document.getElementById('m2-cli-nombre').value;
+        let e = document.getElementById('m2-cli-email').value;
+        if(!n) return alert("⚠️ Nombre requerido");
+        db.clientes.push({ id: Date.now().toString(), nombre: n, email: e, deuda: 0, ocultos: [] });
+        saveDB(); initM2(); alert("✅ Local Registrado");
+        document.getElementById('m2-cli-nombre').value = ''; document.getElementById('m2-cli-email').value = '';
+    }
+
+    function m2_toggleVisibilidadLocal(cid, pid) {
+        let c = db.clientes.find(x => x.id === cid);
+        if(!c) return;
+        if(!c.ocultos) c.ocultos = [];
+        if(c.ocultos.includes(pid)) c.ocultos = c.ocultos.filter(i => i !== pid);
+        else c.ocultos.push(pid);
+        saveDB(); m2_abrirPlanillaMaestra();
+    }
+
+    function m2_abrirPlanillaMaestra() {
+        let cid = document.getElementById('m2-cliente-select').value;
+        let cont = document.getElementById('m2-planilla-container');
+        if(!cid) { cont.style.display = 'none'; return; }
+        
+        if(!db.stock_consignacion[cid]) db.stock_consignacion[cid] = {};
+        let c = db.clientes.find(x => x.id === cid);
+        if(!c.ocultos) c.ocultos = [];
+        
+        let listaCons = db.listas.find(l => l.nombre.toLowerCase().includes('consign'));
+        let lid = listaCons ? listaCons.id : null;
+        let margenCons = listaCons ? listaCons.margen : 45;
+
+        let isCheckedM2 = document.getElementById('m2-mostrar-ocultos')?.checked ? 'checked' : '';
+
+        let html = `
+        <div style="background:#fff; padding:10px; border-radius:12px; border:1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05); animation: fadeIn 0.2s;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:10px;">
+                <h4 style="margin:0; color:var(--primary);">Local: ${c.nombre}</h4>
+                <span style="font-size:11px; color:#666;">Deuda Ant: <b>$${c.deuda}</b></span>
+            </div>
+            
+            <div style="font-size:11px; color:#555; margin-bottom:10px; background:#e8f4f8; padding:8px; border-radius:6px;">
+                <b>Lógica de Precios:</b> Se cobra lo vendido al <b>$ Cobro</b>. La reposición y el stock que quede se actualizarán al <b>$ Nuevo</b> para la próxima visita.
+            </div>
+            
+            <label class="chk-label" style="display:inline-flex; margin-bottom:10px; font-size:11px; padding:4px 8px;">
+                <input type="checkbox" id="m2-mostrar-ocultos" onchange="m2_abrirPlanillaMaestra()" ${isCheckedM2}> Mostrar productos ocultados
+            </label>
+
+            <div class="table-responsive">
+                <table class="tabla-consignacion">
+                    <thead>
+                        <tr><th>Producto (Precios)</th><th>Ant</th><th style="color:var(--info);">Cont.</th><th style="color:var(--danger);">Vend</th><th style="color:var(--accent);">Repo.</th><th style="color:var(--success);">Fin</th></tr>
+                    </thead>
+                    <tbody>`;
+        
+        let mostrarOcultosM2 = document.getElementById('m2-mostrar-ocultos')?.checked || false;
+
+        db.familias.forEach(f => {
+            let prods = db.productos.filter(p => p.familia === f);
+            let innerHtml = "";
+            let renderCount = 0;
+
+            prods.forEach(p => {
+                let stockObj = db.stock_consignacion[cid][p.id] || {cant: 0, pV: 0};
+                let stkAnt = stockObj.cant;
+                
+                let estaOcultoPorCliente = c.ocultos.includes(p.id);
+                let estaOcultoEnListaM1 = listaCons && listaCons.ocultos && listaCons.ocultos.includes(p.id);
+                let estaOculto = estaOcultoPorCliente || (estaOcultoEnListaM1 && stkAnt === 0);
+
+                if(estaOculto && !mostrarOcultosM2) return; 
+                renderCount++;
+
+                let colUsar = p.esUnidad ? 'unidad' : '100g'; 
+                let pActual = lid ? obtenerPrecioFinal(lid, p.id, colUsar, p.costo, p.esUnidad, margenCons).final : calcularPrecioBase(p.costo, '100g', p.esUnidad, margenCons);
+                
+                let pCobro = (stkAnt > 0 && stockObj.pV > 0) ? stockObj.pV : pActual;
+                
+                let btnVis = `<button onclick="m2_toggleVisibilidadLocal('${cid}', '${p.id}')" style="background:none;border:none;cursor:pointer;font-size:12px;margin-left:4px;">${estaOculto ? '➕' : '❌'}</button>`;
+                let trStyle = estaOculto ? 'opacity:0.5; background:#f9f9f9;' : '';
+
+                innerHtml += `
+                <tr style="${trStyle}">
+                    <td style="text-align:left; line-height:1.2;">
+                        <b style="color:var(--dark); ${estaOculto ? 'text-decoration:line-through;':''}">${p.nombre}</b>${btnVis}<br>
+                        <span style="font-size:9px; color:#555;"><b>Cobro: $${pCobro}</b> | Nuevo: $${pActual}</span>
+                        <input type="hidden" id="m2-pcobro-${p.id}" value="${pCobro}">
+                        <input type="hidden" id="m2-pactual-${p.id}" value="${pActual}">
+                    </td>
+                    <td id="m2-ant-${p.id}" style="color:#666;">${stkAnt}</td>
+                    <td><input type="number" class="input-cons" id="m2-cont-${p.id}" oninput="m2_calcTotalPlanilla()" placeholder="-"></td>
+                    <td id="m2-vend-${p.id}" style="color:var(--danger); font-weight:bold; background:#fdf2f2;">0</td>
+                    <td><input type="number" class="input-cons" id="m2-repo-${p.id}" oninput="m2_calcTotalPlanilla()" placeholder="-"></td>
+                    <td id="m2-fin-${p.id}" style="color:var(--success); font-weight:bold; background:#f2fdf2;">${stkAnt}</td>
+                </tr>`;
+            });
+
+            if(renderCount > 0) {
+                html += `<tr class="fam-row"><td colspan="6">${f}</td></tr>` + innerHtml;
+            }
+        });
+
+        html += `   </tbody>
+                </table>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #e9ecef;">
+                <div style="display: flex; justify-content: space-between; font-size: 18px; margin-bottom: 10px; border-bottom:1px solid #ddd; padding-bottom:10px;">
+                    <span>Total a Cobrar Hoy:</span>
+                    <b style="color:var(--danger);">$<span id="m2-total-vendido">0</span></b>
+                </div>
+                <label>Pago recibido en el momento ($):</label>
+                <input type="number" id="m2-cobrado-hoy" value="0" style="font-size: 18px; font-weight: bold; color: var(--success);">
+                
+                <button class="btn btn-primary" style="margin-top:20px;" onclick="m2_guardarPlanillaMaestra()">💾 Guardar Visita y Cerrar Ciclo</button>
+            </div>
+        </div>`;
+        cont.innerHTML = html;
+        cont.style.display = 'block';
+    }
+
+    function m2_calcTotalPlanilla() {
+        let cid = document.getElementById('m2-cliente-select').value;
+        let c = db.clientes.find(x => x.id === cid);
+        let total = 0;
+
+        db.productos.forEach(p => {
+            let elCont = document.getElementById(`m2-cont-${p.id}`);
+            if(elCont) {
+                let ant = parseInt(document.getElementById(`m2-ant-${p.id}`).innerText) || 0;
+                let contStr = elCont.value;
+                let repoStr = document.getElementById(`m2-repo-${p.id}`).value;
+
+                let cont = contStr === "" ? ant : parseInt(contStr);
+                let repo = repoStr === "" ? 0 : parseInt(repoStr);
+                let vend = ant - cont;
+                if(vend < 0) vend = 0; 
+                let fin = cont + repo;
+
+                document.getElementById(`m2-vend-${p.id}`).innerText = vend;
+                document.getElementById(`m2-fin-${p.id}`).innerText = fin;
+
+                if(vend > 0) {
+                    let pCobro = parseInt(document.getElementById(`m2-pcobro-${p.id}`).value);
+                    total += vend * pCobro;
+                }
+            }
+        });
+        document.getElementById('m2-total-vendido').innerText = total;
+    }
+
+    // AQUI MODIFIQUE EL GUARDADO PARA QUE AGARRE TODO EL CATALOGO VISIBLE
+    function m2_guardarPlanillaMaestra() {
+        let cid = document.getElementById('m2-cliente-select').value;
+        let c = db.clientes.find(x => x.id === cid);
+        let totalVendido = parseInt(document.getElementById('m2-total-vendido').innerText) || 0;
+        let cobrado = parseInt(document.getElementById('m2-cobrado-hoy').value) || 0;
+        let debe = totalVendido - cobrado;
+
+        let lineasPlanilla = [];
+        let huboMovimiento = false;
+        let listaCons = db.listas.find(l => l.nombre.toLowerCase().includes('consign'));
+
+        db.productos.forEach(p => {
+            let stockObj = db.stock_consignacion[cid][p.id] || {cant: 0, pV: 0};
+            let stkAnt = stockObj.cant;
+            
+            // Verificamos si debe estar en la planilla (misma lógica que la visualización)
+            let estaOcultoPorCliente = c.ocultos && c.ocultos.includes(p.id);
+            let estaOcultoEnListaM1 = listaCons && listaCons.ocultos && listaCons.ocultos.includes(p.id);
+            let estaOculto = estaOcultoPorCliente || (estaOcultoEnListaM1 && stkAnt === 0);
+
+            if (estaOculto) return; // Si está oculto de verdad, lo salteamos.
+
+            let elCont = document.getElementById(`m2-cont-${p.id}`);
+            if(!elCont) return; 
+            
+            let ant = parseInt(document.getElementById(`m2-ant-${p.id}`).innerText) || 0;
+            let contStr = elCont.value;
+            let repoStr = document.getElementById(`m2-repo-${p.id}`).value;
+            
+            let cont = contStr === "" ? ant : parseInt(contStr);
+            let repo = repoStr === "" ? 0 : parseInt(repoStr);
+            let vend = parseInt(document.getElementById(`m2-vend-${p.id}`).innerText) || 0;
+            let fin = parseInt(document.getElementById(`m2-fin-${p.id}`).innerText) || 0;
+            
+            let pCobro = parseInt(document.getElementById(`m2-pcobro-${p.id}`).value);
+            let pActualNuevo = parseInt(document.getElementById(`m2-pactual-${p.id}`).value);
+
+            db.stock_consignacion[cid][p.id] = { cant: fin, pV: pActualNuevo };
+            
+            if (ant > 0 || contStr !== "" || repoStr !== "") {
+                huboMovimiento = true;
+            }
+
+            // AHORA GUARDAMOS EN EL HISTORIAL TODOS LOS PRODUCTOS ACTIVOS, AUNQUE NO SE HAYAN MOVIDO
+            lineasPlanilla.push({
+                fam: p.familia, pid: p.id, nom: p.nombre, pV: pCobro, 
+                ant: ant, cont: contStr, vend: vend, repo: repoStr, fin: fin
+            });
+        });
+        
+        if(!huboMovimiento) return alert("⚠️ No anotaste ningún dato nuevo en la planilla.");
+
+        c.deuda += debe;
+        
+        db.historial_consignacion.push({
+            id: Date.now().toString(),
+            clienteId: cid,
+            fecha: new Date().toLocaleDateString(),
+            vendidoTotal: totalVendido,
+            cobrado: cobrado,
+            debeGenerado: debe,
+            planilla: lineasPlanilla
+        });
+        
+        saveDB(); 
+        alert("✅ Ciclo de consignación cerrado.");
+        document.getElementById('m2-cliente-select').value = '';
+        document.getElementById('m2-planilla-container').style.display = 'none';
+        initM2(); 
+    }
+
+    function m2_renderHistorial() {
+        let cid = document.getElementById('m2-historial-cliente').value;
+        let cont = document.getElementById('m2-historial-container');
+        if(!cid) { cont.innerHTML = ''; return; }
+        
+        let hist = db.historial_consignacion.filter(h => h.clienteId === cid).reverse();
+        if(hist.length === 0) { cont.innerHTML = '<p style="text-align:center; color:#888; font-size:12px;">Sin visitas previas.</p>'; return; }
+        
+        let html = "";
+        hist.forEach(h => {
+            html += `
+            <div class="card-item" style="border-left-color: var(--primary);">
+                <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                    <b style="color:var(--primary);">📅 Visita ${h.fecha}</b>
+                </div>
+                
+                <div style="background:#f8f9fa; padding:8px; border-radius:6px; font-size:12px; margin-top:8px; display:flex; justify-content:space-between;">
+                    <span style="color:var(--info);">Vendido: <b>$${h.vendidoTotal}</b></span>
+                    <span style="color:var(--success);">Cobró: <b>$${h.cobrado}</b></span>
+                    <span style="color:var(--danger);">Deuda Sumada: <b>$${h.debeGenerado}</b></span>
+                </div>
+                
+                <div class="export-actions" style="margin-top:10px;">
+                    <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--primary); color:var(--primary);" onclick="exportarPDFConsignacionFoto('${h.id}')">📄 Ver Planilla PDF</button>
+                    <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--success); color:var(--success);" onclick="enviarMail('consignacion', '${h.id}')">✉️ Wapp/Mail</button>
+                </div>
+            </div>`;
+        });
+        cont.innerHTML = html;
+    }
+
+    // ==========================================
+    // MÓDULO 3: VENTAS Y REMITOS 
+    // ==========================================
+    let carrito_venta = [];
+    
+    function initM3() {
+        document.getElementById('m3-fecha').valueAsDate = new Date();
+        let selL = document.getElementById('m3-lista-select');
+        selL.innerHTML = '<option value="">-- Seleccionar Lista --</option>';
+        db.listas.forEach(l => selL.innerHTML += `<option value="${l.id}">${l.nombre}</option>`);
+        m3_renderPedidos();
+    }
+
+    function m3_renderSelectorProductos() {
+        let lid = document.getElementById('m3-lista-select').value;
+        let cont = document.getElementById('m3-productos-acordeon');
+        cont.innerHTML = '';
+        if(!lid) {
+            cont.innerHTML = '<p style="font-size:12px; color:#666; background:#fff; padding:10px; border-radius:6px; border:1px solid #ddd;">Seleccioná una lista primero.</p>';
+            return;
+        }
+        let l = db.listas.find(x => x.id === lid);
+        if(!l) return;
+
+        let html = "";
+        db.familias.forEach(f => {
+            let prods = db.productos.filter(p => p.familia === f);
+            let renderedCount = 0;
+            let innerHtml = "";
+
+            prods.forEach(p => {
+                if(l.ocultos && l.ocultos.includes(p.id)) return;
+                
+                l.columnas.forEach(c => {
+                    let keyCelda = `${p.id}_${c}`;
+                    if (l.celdasOcultas && l.celdasOcultas.includes(keyCelda)) return;
+                    
+                    if ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad')) { } 
+                    else {
+                        renderedCount++;
+                        let colName = (l.nombresCols && l.nombresCols[c]) ? l.nombresCols[c] : c;
+                        let keyPres = `${l.id}_${p.id}_${c}`;
+                        let nombrePres = db.pres_manuales[keyPres] || colName;
+                        let pUnit = obtenerPrecioFinal(l.id, p.id, c, p.costo, p.esUnidad, l.margen).final;
+                        
+                        innerHtml += `<tr>
+                            <td style="text-align:left; font-size:11px; line-height:1.3;">
+                                <b>${p.nombre}</b><br><span style="color:var(--accent); font-weight:bold;">(${nombrePres})</span>
+                            </td>
+                            <td style="font-weight:bold; color:var(--info);">$${pUnit}</td>
+                            <td><input type="number" class="input-sm" id="m3-cant-${p.id}-${c}" placeholder="0"></td>
+                            <td><button class="btn btn-small btn-success" style="margin-top:0;" onclick="m3_agregarItemDesdeAcordeon('${l.id}', '${p.id}', '${c}', '${nombrePres}', ${pUnit})">➕</button></td>
+                        </tr>`;
+                    }
+                });
+            });
+
+            if(renderedCount > 0) {
+                html += `<details class="familia-collapse" style="background:#fff;">
+                            <summary><span>${f}</span></summary>
+                            <div class="table-responsive">
+                                <table>
+                                    <thead><tr><th>Producto / Pres.</th><th>Precio</th><th>Cant</th><th>+</th></tr></thead>
+                                    <tbody>${innerHtml}</tbody>
+                                </table>
+                            </div>
+                        </details>`;
+            }
+        });
+        cont.innerHTML = html;
+    }
+
+    function m3_agregarItemDesdeAcordeon(lid, pid, colUsar, nombrePresEditado, pUnit) {
+        let cantInput = document.getElementById(`m3-cant-${pid}-${colUsar}`);
+        let cant = parseInt(cantInput.value);
+        if(!cant || cant <= 0) return alert("⚠️ Ingrese cantidad válida");
+        
+        let p = db.productos.find(x => x.id === pid);
+        let sub = pUnit * cant;
+        let nombreDisplay = p.esUnidad ? p.nombre : `${p.nombre} (${nombrePresEditado})`;
+        
+        carrito_venta.push({ id: p.id, nombre: nombreDisplay, cant: cant, unitario: pUnit, subtotal: sub });
+        cantInput.value = ''; m3_renderCarrito();
+    }
+
+    function m3_renderCarrito() {
+        let tb = document.getElementById('m3-carrito-body'); tb.innerHTML = '';
+        let total = 0;
+        carrito_venta.forEach((i, idx) => {
+            tb.innerHTML += `<tr>
+                <td><b>${i.cant}</b></td><td style="text-align:left; font-size:11px;">${i.nombre}</td>
+                <td><b>$${i.subtotal}</b></td>
+                <td><button onclick="carrito_venta.splice(${idx},1); m3_renderCarrito();" style="background:var(--danger); border:none; color:white; border-radius:4px; padding:4px 8px; font-weight:bold; cursor:pointer;">X</button></td>
+            </tr>`;
+            total += i.subtotal;
+        });
+        document.getElementById('m3-total').innerText = total;
+    }
+
+    function m3_guardarRemito() {
+        let f = document.getElementById('m3-fecha').value;
+        let c = document.getElementById('m3-cliente').value;
+        if(!c || carrito_venta.length === 0) return alert("⚠️ Falta cliente o ítems");
+        
+        let remito = {
+            id: Date.now().toString(), fecha: f, cliente: c, items: carrito_venta,
+            total: document.getElementById('m3-total').innerText, estado: 'Preparación', pago: 'Pendiente'
+        };
+        db.ventas.unshift(remito);
+        saveDB(); carrito_venta = []; m3_renderCarrito(); document.getElementById('m3-cliente').value='';
+        alert("✅ Remito Guardado."); m3_renderPedidos();
+    }
+
+    function m3_renderPedidos() {
+        let cont = document.getElementById('m3-pedidos-container'); cont.innerHTML = '';
+        if(db.ventas.length === 0) { cont.innerHTML = '<p style="text-align:center; font-size:12px; color:#888;">No hay pedidos registrados.</p>'; return;}
+        
+        db.ventas.forEach(v => {
+            let colorEst = v.estado === 'Entregado' ? 'badge-done' : 'badge-pending';
+            let colorPag = v.pago === 'Pagado' ? 'badge-done' : 'badge-pending';
+            let itemsHtml = v.estado === 'Preparación' ? 
+                `<div style="background:#f4f6f7; padding:10px; border-radius:6px; margin-bottom:10px; border: 1px solid #e0e0e0;"><b style="font-size:12px; color:var(--secondary); display:block; margin-bottom:5px;">📋 Detalle a preparar:</b><ul style="margin: 0; padding-left: 20px; font-size:12px; color:#333;">${v.items.map(i => `<li style="margin-bottom:3px;"><b>${i.cant}x</b> ${i.nombre}</li>`).join('')}</ul></div>` : 
+                `<div style="font-size:11px; color:#888; font-style:italic; margin-bottom:10px; padding:5px; background:#f9f9f9; border-radius:4px; text-align:center;">Ítems ocultos (Pedido Entregado)</div>`;
+
+            cont.innerHTML += `
+            <div class="card-item">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <b style="font-size:14px;">${v.cliente}</b>
+                    <span style="font-size:15px; font-weight:900; color:var(--success);">$${v.total}</span>
+                </div>
+                <div style="font-size:11px; color:#666; margin-bottom: 10px;">ID: #${v.id.slice(-4)} | Fecha: ${v.fecha}</div>
+                ${itemsHtml}
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <span class="badge ${colorEst}" onclick="m3_toggleEstado('${v.id}', 'estado')" style="cursor:pointer;">Estado: ${v.estado}</span>
+                    <span class="badge ${colorPag}" onclick="m3_toggleEstado('${v.id}', 'pago')" style="cursor:pointer;">Cobro: ${v.pago}</span>
+                </div>
+                <div class="export-actions">
+                    <button class="btn btn-small btn-outline" style="margin-top:0;" onclick="exportarPDF('remito', '${v.id}')">📄 PDF</button>
+                    <button class="btn btn-small btn-outline" style="margin-top:0;" onclick="enviarMail('remito', '${v.id}')">✉️ Wapp/Mail</button>
+                </div>
+            </div>`;
+        });
+    }
+
+    function m3_toggleEstado(id, tipo) {
+        let v = db.ventas.find(x => x.id === id);
+        if(tipo === 'estado') v.estado = v.estado === 'Preparación' ? 'Entregado' : 'Preparación';
+        if(tipo === 'pago') v.pago = v.pago === 'Pendiente' ? 'Pagado' : 'Pendiente';
+        saveDB(); m3_renderPedidos();
+    }
+
+    // ==========================================
+    // EXPORTACIÓN PDF Y TEXTOS PARA COMPARTIR
+    // ==========================================
+    
+    // AQUI MODIFIQUE LAS FECHAS AUTOMATICAS EN EL PDF
+    function exportarPDFConsignacionFoto(historyId) {
+        try {
+            let h = db.historial_consignacion.find(x => x.id === historyId);
+            let c = db.clientes.find(x => x.id === h.clienteId);
+            
+            // Buscar la fecha de la visita anterior
+            let visitasCliente = db.historial_consignacion.filter(x => x.clienteId === h.clienteId);
+            let currentIndex = visitasCliente.findIndex(x => x.id === historyId);
+            let fechaAnterior = "Inicio";
+            if (currentIndex > 0) {
+                fechaAnterior = visitasCliente[currentIndex - 1].fecha;
+            }
+
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
+            
+            doc.setFontSize(12); doc.text(`Lista de precios desde ${fechaAnterior} al ${h.fecha}`, 105, 15, {align: 'center'});
+            doc.setFontSize(11); doc.text(`Cliente: ${c.nombre}`, 15, 25); doc.line(30, 26, 100, 26); 
+            
+            let bodyData = [];
+            db.familias.forEach(f => {
+                let itemsFam = h.planilla.filter(x => x.fam === f);
+                if(itemsFam.length > 0) {
+                    bodyData.push([{ content: f.toUpperCase(), colSpan: 7, styles: { fillColor: [210, 210, 210], fontStyle: 'bold', halign: 'center' } }]);
+                    itemsFam.forEach(i => {
+                        let pFull = db.productos.find(prod => prod.id === i.pid);
+                        let nombreDisplay = i.nom;
+                        if (pFull && pFull.descripcion && pFull.descripcion.trim() !== "") nombreDisplay += `\n(${pFull.descripcion})`;
+                        
+                        // Si no hay datos ingresados, mostramos un "-" en lugar de un campo vacío
+                        let strCont = i.cont === "" ? "-" : i.cont;
+                        let strRepo = i.repo === "" ? "-" : i.repo;
+                        
+                        bodyData.push([nombreDisplay, `$${i.pV}`, i.ant.toString(), strCont, i.vend.toString(), strRepo, i.fin.toString()]);
+                    });
+                }
+            });
+            bodyData.push([{content: 'Total:', colSpan: 4, styles: {fontStyle: 'bold', halign: 'right'}}, {content: `$${h.vendidoTotal}`, colSpan: 3, styles: {fontStyle: 'bold', textColor: [0,0,200]}}]);
+
+            doc.autoTable({
+                startY: 30, head: [['Producto', 'Precio', 'Stock ant', 'Conteo', 'Vendido', 'Reponer', 'Stock']], body: bodyData, theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+                columnStyles: { 0: { cellWidth: 70 }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' }, 5: { halign: 'center' }, 6: { halign: 'center', fontStyle: 'bold' } }
+            });
+            
+            let finalY = doc.lastAutoTable.finalY + 10;
+            doc.setFontSize(10);
+            doc.text(`Contacto Javier Munhó cel 1138988346 Marcela cel 1157081322 alias: javiermix.lemon`, 15, finalY);
+            doc.text(`Precios en efectivo o transferencia.`, 15, finalY + 5);
+            doc.text(`Fecha de Visita: ${h.fecha}`, 150, finalY + 5);
+
+            doc.save(`Planilla_${c.nombre.replace(/\s+/g, '_')}_${h.fecha.replace(/\//g, '-')}.pdf`);
+        } catch(e) { alert("⚠️ Error PDF: " + e.message); }
+    }
+
+    function exportarPDF(tipo, idRel) {
+        try {
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
+            
+            if(tipo === 'lista') {
+                let listId = document.getElementById('m1-lista-select').value;
+                if(!listId) return alert("Seleccioná una lista primero.");
+                let isProveedor = (listId === 'proveedor');
+                let lista = isProveedor ? {nombre: 'Lista Proveedor (Costos Base)', columnas: ['Costo Base'], margen: 0} : db.listas.find(x => x.id === listId);
+                
+                doc.setFillColor(44, 62, 80); 
+                doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
+                
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(22);
+                doc.setFont("helvetica", "bold");
+                doc.text(lista.nombre.toUpperCase(), doc.internal.pageSize.getWidth() / 2, 18, { align: "center" });
+                
+                let fechaHoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "normal");
+                doc.text(`Actualizada al: ${fechaHoy}`, doc.internal.pageSize.getWidth() / 2, 25, { align: "center" });
+
+                let headers = ['PRODUCTO'];
+                if(isProveedor) headers.push('COSTO BASE'); 
+                else {
+                    lista.columnas.forEach(c => headers.push(((lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c).toUpperCase()));
+                }
+
+                let bodyData = [];
+                db.familias.forEach(f => {
+                    let prods = db.productos.filter(p => p.familia === f);
+                    if(prods.length > 0) {
+                        let hasItems = false; let famRows = [];
+                        prods.forEach(p => {
+                            if(!isProveedor && lista.ocultos && lista.ocultos.includes(p.id)) return;
+                            hasItems = true;
+                            let nombreDisplay = p.nombre;
+                            if (p.descripcion && p.descripcion.trim() !== "") nombreDisplay += `\n(${p.descripcion})`;
+                            
+                            let row = [nombreDisplay];
+                            if(isProveedor) row.push(`$${p.costo}`);
+                            else {
+                                lista.columnas.forEach(c => {
+                                    let keyCelda = `${p.id}_${c}`;
+                                    if (lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda)) row.push('-');
+                                    else if ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad')) row.push('-');
+                                    else row.push(`$${obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen).final}`);
+                                });
+                            }
+                            famRows.push(row);
+                        });
+                        
+                        if(hasItems) {
+                            bodyData.push([{ 
+                                content: f.toUpperCase(), 
+                                colSpan: headers.length, 
+                                styles: { fillColor: [230, 126, 34], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', fontSize: 10 } 
+                            }]);
+                            bodyData = bodyData.concat(famRows);
+                        }
+                    }
+                });
+
+                doc.autoTable({ 
+                    startY: 35, 
+                    head: [headers], 
+                    body: bodyData, 
+                    theme: 'striped', 
+                    styles: { fontSize: 8.5, cellPadding: 1.5, valign: 'middle' }, 
+                    headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], halign: 'center', fontSize: 9 },
+                    columnStyles: { 0: { cellWidth: 85, fontStyle: 'bold' } },
+                    didParseCell: function(data) {
+                        if (data.section === 'body' && data.column.index > 0 && data.row.raw.length > 1) { 
+                            data.cell.styles.halign = 'center';
+                        }
+                    },
+                    didDrawPage: function (data) {
+                        let textY = doc.internal.pageSize.getHeight() - 10;
+                        doc.setFontSize(8);
+                        doc.setFont("helvetica", "italic");
+                        doc.setTextColor(150, 150, 150);
+                        doc.text("Precios sujetos a modificaciones sin previo aviso.", data.settings.margin.left, textY);
+                        doc.text(`Página ${doc.internal.getNumberOfPages()}`, doc.internal.pageSize.getWidth() / 2, textY, { align: "center" });
+                        doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", doc.internal.pageSize.getWidth() - data.settings.margin.right, textY, { align: "right" });
+                    }
+                });
+                doc.save(`Lista_${lista.nombre.replace(/\s+/g, '_')}.pdf`);
+                
+            } else if(tipo === 'remito') {
+                let v = db.ventas.find(x => x.id === idRel);
+                let titulo = `Remito #${v.id.slice(-4)} - ${v.cliente}`;
+                let body = `Fecha: ${v.fecha}\n\n`;
+                v.items.forEach(i => body += `▫️ ${i.cant}x ${i.nombre} - $${i.subtotal}\n`);
+                body += `\nTOTAL A PAGAR: $${v.total}`;
+                doc.setFontSize(18); doc.text(titulo, 15, 20); doc.setFontSize(11);
+                let lineas = doc.splitTextToSize(body, 180); doc.text(lineas, 15, 30);
+                doc.save(`${titulo.replace(/\s+/g, '_')}.pdf`);
+            }
+        } catch(e) { alert("⚠️ Error PDF: " + e.message); }
+    }
+
+    function enviarMail(tipo, idRel) {
+        let textoFinal = ""; let titulo = "";
+        
+        if(tipo === 'remito') {
+            let v = db.ventas.find(x => x.id === idRel);
+            titulo = `Remito #${v.id.slice(-4)} - ${v.cliente}`;
+            textoFinal = `*${titulo}*\nTu pedido (${v.fecha}):\n\n`;
+            v.items.forEach(i => textoFinal += `▫️ ${i.cant}x ${i.nombre} - $${i.subtotal}\n`);
+            textoFinal += `\n*TOTAL A PAGAR: $${v.total}*\n\nGracias!`;
+            
+        } else if (tipo === 'lista') {
+            let listId = document.getElementById('m1-lista-select').value;
+            if(!listId) return alert("Seleccioná una lista primero.");
+            let isProveedor = (listId === 'proveedor');
+            let lista = isProveedor ? {nombre: 'Proveedor', columnas: ['Costo Base'], margen: 0} : db.listas.find(x => x.id === listId);
+            
+            titulo = `Lista de Precios: ${lista.nombre}`; textoFinal = `*${titulo}*\n\n`;
+            
+            db.familias.forEach(f => {
+                let prods = db.productos.filter(p => p.familia === f);
+                let textRows = "";
+                prods.forEach(p => {
+                    if(!isProveedor && lista.ocultos && lista.ocultos.includes(p.id)) return;
+                    let descTxt = p.descripcion && p.descripcion.trim() !== "" ? ` (${p.descripcion})` : '';
+                    let tempRow = `\n▫️ *${p.nombre}*${descTxt}\n`;
+                    let hasPrices = false;
+                    if(isProveedor) { tempRow += `   - Costo Base: $${p.costo}\n`; hasPrices = true; }
+                    else {
+                        lista.columnas.forEach(c => {
+                            let keyCelda = `${p.id}_${c}`;
+                            if (lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda)) return; 
+
+                            if (!((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad'))) {
+                                let colName = (lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c;
+                                let keyPres = `${lista.id}_${p.id}_${c}`;
+                                let nombrePres = db.pres_manuales[keyPres] || colName;
+                                let pUnit = obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen).final;
+                                tempRow += `   - ${nombrePres}: $${pUnit}\n`;
+                                hasPrices = true;
+                            }
+                        });
+                    }
+                    if (hasPrices) textRows += tempRow;
+                });
+                if (textRows !== "") textoFinal += `\n*--- ${f.toUpperCase()} ---*\n` + textRows;
+            });
+            
+        } else if (tipo === 'consignacion') {
+            let h = db.historial_consignacion.find(x => x.id === idRel);
+            let c = db.clientes.find(x => x.id === h.clienteId);
+            titulo = `Resumen Consignación - ${c.nombre}`;
+            textoFinal = `*${titulo}*\nFecha: ${h.fecha}\n\n*Movimientos de Stock:*\n`;
+            h.planilla.forEach(item => {
+                if (item.vend > 0 || (item.repo !== "" && parseInt(item.repo) > 0)) {
+                    textoFinal += `▫️ ${item.nom}: `;
+                    let acts = [];
+                    if (item.vend > 0) acts.push(`Vendió ${item.vend} (a $${item.pV})`);
+                    if (item.repo !== "" && parseInt(item.repo) > 0) acts.push(`Dejó ${item.repo}`);
+                    textoFinal += acts.join(" | ") + `\n`;
+                }
+            });
+            textoFinal += `\n*Vendido: $${h.vendidoTotal}*\n*Abonado: $${h.cobrado}*\n*Deuda sumada: $${h.debeGenerado}*\n\n*Saldo Total Actual: $${c.deuda}*\n\nGracias!`;
+        }
+        
+        let tel = prompt("📱 Celular para WhatsApp (o vacío para Mail):");
+        if (tel && tel.trim() !== "") window.open(`https://wa.me/${tel.replace(/\D/g,'')}?text=${encodeURIComponent(textoFinal)}`, '_blank');
+        else window.open(`mailto:?subject=${encodeURIComponent(titulo)}&body=${encodeURIComponent(textoFinal)}`, '_blank');
+    }
+
+    iniciarApp();
+</script>
+
+<!-- Registro del Service Worker para que funcione como App (PWA) -->
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service Worker no registrado:', err));
+        });
+    }
+</script>
+</body>
+</html>
