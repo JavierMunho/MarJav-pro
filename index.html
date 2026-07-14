@@ -13,10 +13,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="marJav Pro">
 
-    <!-- LIBRERÍAS NECESARIAS: PDF Y GENERADOR DE IMÁGENES -->
+    <!-- LIBRERÍAS NECESARIAS: PDF, EXCEL Y GENERADOR DE IMÁGENES -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <!-- BASE DE DATOS EN LA NUBE (Firebase Firestore, plan gratuito) -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -134,6 +135,7 @@
         </div>
         <div class="main-menu">
             <button class="btn btn-success" style="margin-top:0; padding:18px; font-size:16px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="forzarGuardadoManual()">💾 GUARDAR TODOS LOS CAMBIOS</button>
+            <button class="btn btn-info" style="margin-top:0; padding:16px; font-size:15px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="exportarTodoExcel()">📊 EXPORTAR TODO A EXCEL (.xlsx)</button>
             <div class="menu-card" style="border-color: var(--info);" onclick="nav('page-m1')">
                 <h2 style="color: var(--info);">Módulo 1: Listas y Proveedor</h2>
                 <p>Catálogo base, ocultado y exportación a WhatsApp/PDF</p>
@@ -237,7 +239,10 @@
             <h3 class="section-title">1. Gestión de Locales</h3>
             <div class="grid-2">
                 <input type="text" id="m2-cli-nombre" placeholder="Nombre Comercial / Local">
-                <input type="text" id="m2-cli-email" placeholder="Email del Local">
+                <input type="text" id="m2-cli-tel" placeholder="Teléfono (WhatsApp)">
+            </div>
+            <div class="grid-1" style="margin-top:10px;">
+                <input type="text" id="m2-cli-domicilio" placeholder="Domicilio">
             </div>
             <button class="btn btn-success" onclick="m2_guardarCliente()">👤 Registrar Local</button>
         </div>
@@ -544,6 +549,78 @@
         document.getElementById('loading-overlay').style.display = 'none';
         actualizarIndicador(cloudOk ? '☁️ Sincronizado' : '⚠️ Modo local (sin conexión)', cloudOk ? '#2ecc71' : '#e67e22');
         nav('page-dashboard');
+    }
+
+    function exportarTodoExcel() {
+        try {
+            let wb = XLSX.utils.book_new();
+
+            // Hoja 1: Productos (catálogo maestro)
+            let filasProductos = db.productos.map(p => ({
+                Familia: p.familia,
+                Producto: p.nombre,
+                Descripcion: p.descripcion || '',
+                'Costo Base ($)': p.costo,
+                'Se vende por unidad': p.esUnidad ? 'Sí' : 'No'
+            }));
+            let hojaProductos = XLSX.utils.json_to_sheet(filasProductos);
+            XLSX.utils.book_append_sheet(wb, hojaProductos, 'Productos');
+
+            // Hoja 2: Precios por lista (una fila por producto/presentación)
+            let filasPrecios = [];
+            db.listas.forEach(l => {
+                db.productos.forEach(p => {
+                    if (l.ocultos && l.ocultos.includes(p.id)) return;
+                    l.columnas.forEach(c => {
+                        let keyCelda = `${p.id}_${c}`;
+                        if (l.celdasOcultas && l.celdasOcultas.includes(keyCelda)) return;
+                        if ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad')) return;
+                        let colName = (l.nombresCols && l.nombresCols[c]) ? l.nombresCols[c] : c;
+                        let keyPres = `${l.id}_${p.id}_${c}`;
+                        let nombrePres = db.pres_manuales[keyPres] || colName;
+                        let precio = obtenerPrecioFinal(l.id, p.id, c, p.costo, p.esUnidad, l.margen).final;
+                        filasPrecios.push({
+                            Lista: l.nombre, Producto: p.nombre, Presentacion: nombrePres, 'Precio ($)': precio
+                        });
+                    });
+                });
+            });
+            let hojaPrecios = XLSX.utils.json_to_sheet(filasPrecios);
+            XLSX.utils.book_append_sheet(wb, hojaPrecios, 'Precios');
+
+            // Hoja 3: Locales de consignación (con deuda actual)
+            let filasClientes = db.clientes.map(c => ({
+                Local: c.nombre, Telefono: c.telefono || '', Domicilio: c.domicilio || '', 'Deuda Actual ($)': c.deuda || 0
+            }));
+            let hojaClientes = XLSX.utils.json_to_sheet(filasClientes);
+            XLSX.utils.book_append_sheet(wb, hojaClientes, 'Locales Consignacion');
+
+            // Hoja 4: Historial de visitas de consignación
+            let filasHistorial = [];
+            db.historial_consignacion.forEach(h => {
+                let cli = db.clientes.find(x => x.id === h.clienteId);
+                filasHistorial.push({
+                    Fecha: h.fecha, Local: cli ? cli.nombre : '(borrado)',
+                    'Vendido Total ($)': h.vendidoTotal, 'Cobrado ($)': h.cobrado, 'Deuda Sumada ($)': h.debeGenerado
+                });
+            });
+            let hojaHistorial = XLSX.utils.json_to_sheet(filasHistorial);
+            XLSX.utils.book_append_sheet(wb, hojaHistorial, 'Historial Consignacion');
+
+            // Hoja 5: Ventas / Remitos
+            let filasVentas = db.ventas.map(v => ({
+                Fecha: v.fecha, Cliente: v.cliente, 'Total ($)': v.total,
+                Estado: v.estado, Cobro: v.pago,
+                Items: v.items.map(i => `${i.cant}x ${i.nombre}`).join(' | ')
+            }));
+            let hojaVentas = XLSX.utils.json_to_sheet(filasVentas);
+            XLSX.utils.book_append_sheet(wb, hojaVentas, 'Ventas');
+
+            let fechaArchivo = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
+            XLSX.writeFile(wb, `marJavPro_Datos_${fechaArchivo}.xlsx`);
+        } catch(e) {
+            alert("⚠️ Error al generar el Excel: " + e.message);
+        }
     }
 
     function nav(pageId) {
@@ -1040,11 +1117,33 @@
 
     function m2_guardarCliente() {
         let n = document.getElementById('m2-cli-nombre').value;
-        let e = document.getElementById('m2-cli-email').value;
+        let tel = document.getElementById('m2-cli-tel').value;
+        let dom = document.getElementById('m2-cli-domicilio').value;
         if(!n) return alert("⚠️ Nombre requerido");
-        db.clientes.push({ id: Date.now().toString(), nombre: n, email: e, deuda: 0, ocultos: [] });
+        db.clientes.push({ id: Date.now().toString(), nombre: n, telefono: tel, domicilio: dom, deuda: 0, ocultos: [] });
         saveDB(); initM2(); alert("✅ Local Registrado");
-        document.getElementById('m2-cli-nombre').value = ''; document.getElementById('m2-cli-email').value = '';
+        document.getElementById('m2-cli-nombre').value = ''; document.getElementById('m2-cli-tel').value = ''; document.getElementById('m2-cli-domicilio').value = '';
+    }
+
+    function m2_editarCliente(cid) {
+        let c = db.clientes.find(x => x.id === cid);
+        if(!c) return;
+        let tel = prompt(`Teléfono (WhatsApp) de ${c.nombre}:`, c.telefono || "");
+        if (tel === null) return;
+        let dom = prompt(`Domicilio de ${c.nombre}:`, c.domicilio || "");
+        if (dom === null) return;
+        c.telefono = tel;
+        c.domicilio = dom;
+        saveDB();
+        alert("✅ Datos del local actualizados.");
+        if (document.getElementById('m2-cliente-select').value === cid) m2_abrirPlanillaMaestra();
+    }
+
+    function m2_abrirWhatsapp(cid) {
+        let c = db.clientes.find(x => x.id === cid);
+        if(!c || !c.telefono || c.telefono.trim() === "") return alert("⚠️ Este local todavía no tiene teléfono cargado. Tocá 'Editar datos' para agregarlo.");
+        let telLimpio = c.telefono.replace(/\D/g, '');
+        window.open(`https://wa.me/${telLimpio}`, '_blank');
     }
 
     function m2_toggleVisibilidadLocal(cid, pid) {
@@ -1076,6 +1175,17 @@
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:10px;">
                 <h4 style="margin:0; color:var(--primary);">Local: ${c.nombre}</h4>
                 <span style="font-size:11px; color:#666;">Deuda Ant: <b>$${c.deuda}</b></span>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; font-size:12px; color:#555;">
+                <div>
+                    📞 ${c.telefono && c.telefono.trim() !== "" ? c.telefono : '<i>Sin teléfono</i>'}
+                    ${c.domicilio && c.domicilio.trim() !== "" ? ' | 📍 ' + c.domicilio : ''}
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button onclick="m2_abrirWhatsapp('${cid}')" style="background:#25D366; color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">💬 WhatsApp</button>
+                    <button onclick="m2_editarCliente('${cid}')" style="background:var(--info); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">✏️ Editar datos</button>
+                </div>
             </div>
             
             <div style="font-size:11px; color:#555; margin-bottom:10px; background:#e8f4f8; padding:8px; border-radius:6px;">
@@ -1605,7 +1715,7 @@
     }
 
     function enviarMail(tipo, idRel) {
-        let textoFinal = ""; let titulo = "";
+        let textoFinal = ""; let titulo = ""; let telSugerido = "";
         
         if(tipo === 'remito') {
             let v = db.ventas.find(x => x.id === idRel);
@@ -1654,6 +1764,7 @@
         } else if (tipo === 'consignacion') {
             let h = db.historial_consignacion.find(x => x.id === idRel);
             let c = db.clientes.find(x => x.id === h.clienteId);
+            telSugerido = (c && c.telefono) ? c.telefono : "";
             titulo = `Resumen Consignación - ${c.nombre}`;
             textoFinal = `*${titulo}*\nFecha: ${h.fecha}\n\n*Movimientos de Stock:*\n`;
             h.planilla.forEach(item => {
@@ -1668,7 +1779,7 @@
             textoFinal += `\n*Vendido: $${h.vendidoTotal}*\n*Abonado: $${h.cobrado}*\n*Deuda sumada: $${h.debeGenerado}*\n\n*Saldo Total Actual: $${c.deuda}*\n\nGracias!`;
         }
         
-        let tel = prompt("📱 Celular para WhatsApp (o vacío para Mail):");
+        let tel = prompt("📱 Celular para WhatsApp (o vacío para Mail):", telSugerido);
         if (tel && tel.trim() !== "") window.open(`https://wa.me/${tel.replace(/\D/g,'')}?text=${encodeURIComponent(textoFinal)}`, '_blank');
         else window.open(`mailto:?subject=${encodeURIComponent(titulo)}&body=${encodeURIComponent(textoFinal)}`, '_blank');
     }
