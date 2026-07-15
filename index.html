@@ -1699,4 +1699,288 @@
         };
         db.ventas.unshift(remito);
         saveDB(); carrito_venta = []; m3_renderCarrito(); document.getElementById('m3-cliente').value='';
-        aler
+        alert("✅ Remito Guardado."); m3_renderPedidos();
+    }
+
+    function m3_renderPedidos() {
+        let cont = document.getElementById('m3-pedidos-container'); cont.innerHTML = '';
+        if(db.ventas.length === 0) { cont.innerHTML = '<p style="text-align:center; font-size:12px; color:#888;">No hay pedidos registrados.</p>'; return;}
+        
+        db.ventas.forEach(v => {
+            let colorEst = v.estado === 'Entregado' ? 'badge-done' : 'badge-pending';
+            let colorPag = v.pago === 'Pagado' ? 'badge-done' : 'badge-pending';
+            let itemsHtml = v.estado === 'Preparación' ? 
+                `<div style="background:#f4f6f7; padding:10px; border-radius:6px; margin-bottom:10px; border: 1px solid #e0e0e0;"><b style="font-size:12px; color:var(--secondary); display:block; margin-bottom:5px;">📋 Detalle a preparar:</b><ul style="margin: 0; padding-left: 20px; font-size:12px; color:#333;">${v.items.map(i => `<li style="margin-bottom:3px;"><b>${i.cant}x</b> ${i.nombre}</li>`).join('')}</ul></div>` : 
+                `<div style="font-size:11px; color:#888; font-style:italic; margin-bottom:10px; padding:5px; background:#f9f9f9; border-radius:4px; text-align:center;">Ítems ocultos (Pedido Entregado)</div>`;
+
+            cont.innerHTML += `
+            <div class="card-item">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <b style="font-size:14px;">${v.cliente}</b>
+                    <span style="font-size:15px; font-weight:900; color:var(--success);">$${v.total}</span>
+                </div>
+                <div style="font-size:11px; color:#666; margin-bottom: 10px;">ID: #${v.id.slice(-4)} | Fecha: ${v.fecha}</div>
+                ${itemsHtml}
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <span class="badge ${colorEst}" onclick="m3_toggleEstado('${v.id}', 'estado')" style="cursor:pointer;">Estado: ${v.estado}</span>
+                    <span class="badge ${colorPag}" onclick="m3_toggleEstado('${v.id}', 'pago')" style="cursor:pointer;">Cobro: ${v.pago}</span>
+                </div>
+                <div class="export-actions">
+                    <button class="btn btn-small btn-outline" style="margin-top:0;" onclick="exportarPDF('remito', '${v.id}')">📄 PDF</button>
+                    <button class="btn btn-small btn-outline" style="margin-top:0;" onclick="enviarMail('remito', '${v.id}')">✉️ Wapp/Mail</button>
+                </div>
+            </div>`;
+        });
+    }
+
+    function m3_toggleEstado(id, tipo) {
+        let v = db.ventas.find(x => x.id === id);
+        if(tipo === 'estado') v.estado = v.estado === 'Preparación' ? 'Entregado' : 'Preparación';
+        if(tipo === 'pago') v.pago = v.pago === 'Pendiente' ? 'Pagado' : 'Pendiente';
+        saveDB(); m3_renderPedidos();
+    }
+
+    // ==========================================
+    // EXPORTACIÓN PDF Y TEXTOS PARA COMPARTIR
+    // ==========================================
+    
+    // AQUI MODIFIQUE LAS FECHAS AUTOMATICAS EN EL PDF
+    function exportarPDFConsignacionFoto(historyId) {
+        try {
+            let h = db.historial_consignacion.find(x => x.id === historyId);
+            let c = db.clientes.find(x => x.id === h.clienteId);
+            
+            // Buscar la fecha de la visita anterior
+            let visitasCliente = db.historial_consignacion.filter(x => x.clienteId === h.clienteId);
+            let currentIndex = visitasCliente.findIndex(x => x.id === historyId);
+            let fechaAnterior = "Inicio";
+            if (currentIndex > 0) {
+                fechaAnterior = visitasCliente[currentIndex - 1].fecha;
+            }
+
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
+            
+            doc.setFontSize(12); doc.text(`Lista de precios desde ${fechaAnterior} al ${h.fecha}`, 105, 15, {align: 'center'});
+            doc.setFontSize(11); doc.text(`Cliente: ${c.nombre}`, 15, 25); doc.line(30, 26, 100, 26); 
+            
+            let bodyData = [];
+            db.familias.forEach(f => {
+                let itemsFam = h.planilla.filter(x => x.fam === f);
+                if(itemsFam.length > 0) {
+                    bodyData.push([{ content: f.toUpperCase(), colSpan: 7, styles: { fillColor: [210, 210, 210], fontStyle: 'bold', halign: 'center' } }]);
+                    itemsFam.forEach(i => {
+                        let pFull = db.productos.find(prod => prod.id === i.pid);
+                        let nombreDisplay = i.nom;
+                        if (pFull && pFull.descripcion && pFull.descripcion.trim() !== "") nombreDisplay += `\n(${pFull.descripcion})`;
+                        
+                        // Si no hay datos ingresados, mostramos un "-" en lugar de un campo vacío
+                        let strCont = i.cont === "" ? "-" : i.cont;
+                        let strRepo = i.repo === "" ? "-" : i.repo;
+                        
+                        bodyData.push([nombreDisplay, `$${i.pV}`, i.ant.toString(), strCont, i.vend.toString(), strRepo, i.fin.toString()]);
+                    });
+                }
+            });
+            bodyData.push([{content: 'Total:', colSpan: 4, styles: {fontStyle: 'bold', halign: 'right'}}, {content: `$${h.vendidoTotal}`, colSpan: 3, styles: {fontStyle: 'bold', textColor: [0,0,200]}}]);
+
+            doc.autoTable({
+                startY: 30, head: [['Producto', 'Precio', 'Stock ant', 'Conteo', 'Vendido', 'Reponer', 'Stock']], body: bodyData, theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+                columnStyles: { 0: { cellWidth: 70 }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' }, 5: { halign: 'center' }, 6: { halign: 'center', fontStyle: 'bold' } }
+            });
+            
+            let finalY = doc.lastAutoTable.finalY + 10;
+            doc.setFontSize(10);
+            doc.text(`Contacto Javier Munhó cel 1138988346 Marcela cel 1157081322 alias: javiermix.lemon`, 15, finalY);
+            doc.text(`Precios en efectivo o transferencia.`, 15, finalY + 5);
+            doc.text(`Fecha de Visita: ${h.fecha}`, 150, finalY + 5);
+
+            doc.save(`Planilla_${c.nombre.replace(/\s+/g, '_')}_${h.fecha.replace(/\//g, '-')}.pdf`);
+        } catch(e) { alert("⚠️ Error PDF: " + e.message); }
+    }
+
+    function exportarPDF(tipo, idRel) {
+        try {
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
+            
+            if(tipo === 'lista') {
+                let listId = document.getElementById('m1-lista-select').value;
+                if(!listId) return alert("Seleccioná una lista primero.");
+                let isProveedor = (listId === 'proveedor');
+                let lista = isProveedor ? {nombre: 'Lista Proveedor (Costos Base)', columnas: ['Costo Base'], margen: 0} : db.listas.find(x => x.id === listId);
+                
+                doc.setFillColor(44, 62, 80); 
+                doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
+                
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(22);
+                doc.setFont("helvetica", "bold");
+                doc.text(lista.nombre.toUpperCase(), doc.internal.pageSize.getWidth() / 2, 18, { align: "center" });
+                
+                let fechaHoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "normal");
+                doc.text(`Actualizada al: ${fechaHoy}`, doc.internal.pageSize.getWidth() / 2, 25, { align: "center" });
+
+                let headers = ['PRODUCTO'];
+                if(isProveedor) headers.push('COSTO BASE'); 
+                else {
+                    lista.columnas.forEach(c => headers.push(((lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c).toUpperCase()));
+                }
+
+                let bodyData = [];
+                db.familias.forEach(f => {
+                    let prods = db.productos.filter(p => p.familia === f);
+                    if(prods.length > 0) {
+                        let hasItems = false; let famRows = [];
+                        prods.forEach(p => {
+                            if(!isProveedor && lista.ocultos && lista.ocultos.includes(p.id)) return;
+                            hasItems = true;
+                            let nombreDisplay = p.nombre;
+                            if (p.descripcion && p.descripcion.trim() !== "") nombreDisplay += `\n(${p.descripcion})`;
+                            
+                            let row = [nombreDisplay];
+                            if(isProveedor) row.push(`$${p.costo}`);
+                            else {
+                                lista.columnas.forEach(c => {
+                                    let keyCelda = `${p.id}_${c}`;
+                                    if (lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda)) row.push('-');
+                                    else if ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad')) row.push('-');
+                                    else row.push(`$${obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen).final}`);
+                                });
+                            }
+                            famRows.push(row);
+                        });
+                        
+                        if(hasItems) {
+                            bodyData.push([{ 
+                                content: f.toUpperCase(), 
+                                colSpan: headers.length, 
+                                styles: { fillColor: [230, 126, 34], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', fontSize: 10 } 
+                            }]);
+                            bodyData = bodyData.concat(famRows);
+                        }
+                    }
+                });
+
+                doc.autoTable({ 
+                    startY: 35, 
+                    head: [headers], 
+                    body: bodyData, 
+                    theme: 'striped', 
+                    styles: { fontSize: 8.5, cellPadding: 1.5, valign: 'middle' }, 
+                    headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], halign: 'center', fontSize: 9 },
+                    columnStyles: { 0: { cellWidth: 85, fontStyle: 'bold' } },
+                    didParseCell: function(data) {
+                        if (data.section === 'body' && data.column.index > 0 && data.row.raw.length > 1) { 
+                            data.cell.styles.halign = 'center';
+                        }
+                    },
+                    didDrawPage: function (data) {
+                        let textY = doc.internal.pageSize.getHeight() - 10;
+                        doc.setFontSize(8);
+                        doc.setFont("helvetica", "italic");
+                        doc.setTextColor(150, 150, 150);
+                        doc.text("Precios sujetos a modificaciones sin previo aviso.", data.settings.margin.left, textY);
+                        doc.text(`Página ${doc.internal.getNumberOfPages()}`, doc.internal.pageSize.getWidth() / 2, textY, { align: "center" });
+                        doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", doc.internal.pageSize.getWidth() - data.settings.margin.right, textY, { align: "right" });
+                    }
+                });
+                doc.save(`Lista_${lista.nombre.replace(/\s+/g, '_')}.pdf`);
+                
+            } else if(tipo === 'remito') {
+                let v = db.ventas.find(x => x.id === idRel);
+                let titulo = `Remito #${v.id.slice(-4)} - ${v.cliente}`;
+                let body = `Fecha: ${v.fecha}\n\n`;
+                v.items.forEach(i => body += `▫️ ${i.cant}x ${i.nombre} - $${i.subtotal}\n`);
+                body += `\nTOTAL A PAGAR: $${v.total}`;
+                doc.setFontSize(18); doc.text(titulo, 15, 20); doc.setFontSize(11);
+                let lineas = doc.splitTextToSize(body, 180); doc.text(lineas, 15, 30);
+                doc.save(`${titulo.replace(/\s+/g, '_')}.pdf`);
+            }
+        } catch(e) { alert("⚠️ Error PDF: " + e.message); }
+    }
+
+    function enviarMail(tipo, idRel) {
+        let textoFinal = ""; let titulo = ""; let telSugerido = "";
+        
+        if(tipo === 'remito') {
+            let v = db.ventas.find(x => x.id === idRel);
+            titulo = `Remito #${v.id.slice(-4)} - ${v.cliente}`;
+            textoFinal = `*${titulo}*\nTu pedido (${v.fecha}):\n\n`;
+            v.items.forEach(i => textoFinal += `▫️ ${i.cant}x ${i.nombre} - $${i.subtotal}\n`);
+            textoFinal += `\n*TOTAL A PAGAR: $${v.total}*\n\nGracias!`;
+            
+        } else if (tipo === 'lista') {
+            let listId = document.getElementById('m1-lista-select').value;
+            if(!listId) return alert("Seleccioná una lista primero.");
+            let isProveedor = (listId === 'proveedor');
+            let lista = isProveedor ? {nombre: 'Proveedor', columnas: ['Costo Base'], margen: 0} : db.listas.find(x => x.id === listId);
+            
+            titulo = `Lista de Precios: ${lista.nombre}`; textoFinal = `*${titulo}*\n\n`;
+            
+            db.familias.forEach(f => {
+                let prods = db.productos.filter(p => p.familia === f);
+                let textRows = "";
+                prods.forEach(p => {
+                    if(!isProveedor && lista.ocultos && lista.ocultos.includes(p.id)) return;
+                    let descTxt = p.descripcion && p.descripcion.trim() !== "" ? ` (${p.descripcion})` : '';
+                    let tempRow = `\n▫️ *${p.nombre}*${descTxt}\n`;
+                    let hasPrices = false;
+                    if(isProveedor) { tempRow += `   - Costo Base: $${p.costo}\n`; hasPrices = true; }
+                    else {
+                        lista.columnas.forEach(c => {
+                            let keyCelda = `${p.id}_${c}`;
+                            if (lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda)) return; 
+
+                            if (!((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad'))) {
+                                let colName = (lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c;
+                                let keyPres = `${lista.id}_${p.id}_${c}`;
+                                let nombrePres = db.pres_manuales[keyPres] || colName;
+                                let pUnit = obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen).final;
+                                tempRow += `   - ${nombrePres}: $${pUnit}\n`;
+                                hasPrices = true;
+                            }
+                        });
+                    }
+                    if (hasPrices) textRows += tempRow;
+                });
+                if (textRows !== "") textoFinal += `\n*--- ${f.toUpperCase()} ---*\n` + textRows;
+            });
+            
+        } else if (tipo === 'consignacion') {
+            let h = db.historial_consignacion.find(x => x.id === idRel);
+            let c = db.clientes.find(x => x.id === h.clienteId);
+            telSugerido = (c && c.telefono) ? c.telefono : "";
+            titulo = `Resumen Consignación - ${c.nombre}`;
+            textoFinal = `*${titulo}*\nFecha: ${h.fecha}\n\n*Movimientos de Stock:*\n`;
+            h.planilla.forEach(item => {
+                if (item.vend > 0 || (item.repo !== "" && parseInt(item.repo) > 0)) {
+                    textoFinal += `▫️ ${item.nom}: `;
+                    let acts = [];
+                    if (item.vend > 0) acts.push(`Vendió ${item.vend} (a $${item.pV})`);
+                    if (item.repo !== "" && parseInt(item.repo) > 0) acts.push(`Dejó ${item.repo}`);
+                    textoFinal += acts.join(" | ") + `\n`;
+                }
+            });
+            textoFinal += `\n*Vendido: $${h.vendidoTotal}*\n*Abonado: $${h.cobrado}*\n*Deuda sumada: $${h.debeGenerado}*\n\n*Saldo Total Actual: $${c.deuda}*\n\nGracias!`;
+        }
+        
+        let tel = prompt("📱 Celular para WhatsApp (o vacío para Mail):", telSugerido);
+        if (tel && tel.trim() !== "") window.open(`https://wa.me/${tel.replace(/\D/g,'')}?text=${encodeURIComponent(textoFinal)}`, '_blank');
+        else window.open(`mailto:?subject=${encodeURIComponent(titulo)}&body=${encodeURIComponent(textoFinal)}`, '_blank');
+    }
+
+    iniciarApp();
+</script>
+
+<!-- Registro del Service Worker para que funcione como App (PWA) -->
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service Worker no registrado:', err));
+        });
+    }
+</script>
+</body>
+</html>
