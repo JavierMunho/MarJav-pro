@@ -1230,7 +1230,10 @@
                 </div>
             </div>
 
-            <button class="btn btn-outline" style="margin-top:0; margin-bottom:10px; font-size:12px; padding:10px;" onclick="m2_mostrarCargaInicial('${cid}')">🆕 Cargar / Ajustar Stock (sin venta)</button>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:150px; font-size:12px; padding:10px;" onclick="m2_mostrarCargaInicial('${cid}')">🆕 Cargar / Ajustar Stock (sin venta)</button>
+                <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:150px; font-size:12px; padding:10px; border-color:var(--info); color:var(--info);" onclick="exportarPDFStockActual('${cid}')">📄 PDF Stock Actual</button>
+            </div>
             `;
 
         if (pendiente) {
@@ -1340,6 +1343,7 @@
                 </div>
                 <label>Pago recibido en el momento ($):</label>
                 <input type="number" id="m2-cobrado-hoy" value="0" style="font-size: 18px; font-weight: bold; color: var(--success);">
+                <button class="btn btn-outline" style="margin-top:10px; border-color:var(--info); color:var(--info);" onclick="exportarPDFConteo('${cid}')">📄 PDF del Conteo</button>
                 `;
 
         if (pendiente) {
@@ -1781,6 +1785,104 @@
     // EXPORTACIÓN PDF Y TEXTOS PARA COMPARTIR
     // ==========================================
     
+    function exportarPDFStockActual(cid) {
+        try {
+            let c = db.clientes.find(x => x.id === cid);
+            if (!db.stock_consignacion[cid]) db.stock_consignacion[cid] = {};
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
+
+            doc.setFontSize(14); doc.text(`Stock Actual en Consignación`, 105, 15, {align: 'center'});
+            doc.setFontSize(11); doc.text(`Local: ${c.nombre}`, 15, 25);
+            doc.setFontSize(9); doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 15, 31);
+
+            let bodyData = [];
+            db.familias.forEach(f => {
+                let prods = db.productos.filter(p => p.familia === f);
+                let itemsFam = [];
+                prods.forEach(p => {
+                    let stockObj = db.stock_consignacion[cid][p.id] || {cant: 0, pV: 0};
+                    if (stockObj.cant <= 0) return;
+                    itemsFam.push([p.nombre, `$${stockObj.pV || 0}`, stockObj.cant.toString()]);
+                });
+                if (itemsFam.length > 0) {
+                    bodyData.push([{ content: f.toUpperCase(), colSpan: 3, styles: { fillColor: [210, 210, 210], fontStyle: 'bold', halign: 'center' } }]);
+                    bodyData = bodyData.concat(itemsFam);
+                }
+            });
+
+            if (bodyData.length === 0) return alert("⚠️ Este local todavía no tiene stock cargado.");
+
+            doc.autoTable({
+                startY: 36, head: [['Producto', 'Precio', 'Stock Actual']], body: bodyData, theme: 'grid',
+                styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+                columnStyles: { 0: { cellWidth: 110 }, 1: { halign: 'center' }, 2: { halign: 'center', fontStyle: 'bold' } }
+            });
+
+            doc.save(`Stock_${c.nombre.replace(/\s+/g, '_')}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`);
+        } catch(e) { alert("⚠️ Error PDF: " + e.message); }
+    }
+
+    function exportarPDFConteo(cid) {
+        try {
+            let c = db.clientes.find(x => x.id === cid);
+            let pendiente = db.conteos_pendientes ? db.conteos_pendientes[cid] : null;
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
+
+            let bodyData = [];
+            let totalVendido = 0;
+            let fechaConteo = pendiente ? pendiente.fecha : new Date().toLocaleDateString();
+
+            db.familias.forEach(f => {
+                let prods = db.productos.filter(p => p.familia === f);
+                let itemsFam = [];
+                prods.forEach(p => {
+                    let ant, cont, vend, pCobro;
+                    if (pendiente && pendiente.items[p.id]) {
+                        ant = pendiente.items[p.id].ant;
+                        cont = pendiente.items[p.id].cont;
+                        vend = pendiente.items[p.id].vend;
+                        pCobro = pendiente.items[p.id].pCobro;
+                    } else {
+                        let contEl = document.getElementById(`m2-cont-${p.id}`);
+                        if (!contEl || contEl.value === "") return;
+                        let stockObj = (db.stock_consignacion[cid] && db.stock_consignacion[cid][p.id]) || { cant: 0, pV: 0 };
+                        ant = stockObj.cant;
+                        cont = parseInt(contEl.value);
+                        vend = ant - cont;
+                        if (vend < 0) vend = 0;
+                        let pCobroEl = document.getElementById(`m2-pcobro-${p.id}`);
+                        pCobro = pCobroEl ? parseInt(pCobroEl.value) : 0;
+                    }
+                    if (ant === 0 && cont === 0) return;
+                    itemsFam.push([p.nombre, `$${pCobro}`, ant.toString(), cont.toString(), vend.toString(), vend > 0 ? `$${vend * pCobro}` : '-']);
+                    if (vend > 0) totalVendido += vend * pCobro;
+                });
+                if (itemsFam.length > 0) {
+                    bodyData.push([{ content: f.toUpperCase(), colSpan: 6, styles: { fillColor: [210, 210, 210], fontStyle: 'bold', halign: 'center' } }]);
+                    bodyData = bodyData.concat(itemsFam);
+                }
+            });
+
+            if (bodyData.length === 0) return alert("⚠️ Todavía no cargaste ningún conteo para imprimir.");
+
+            doc.setFontSize(14); doc.text(`Conteo de Consignación`, 105, 15, {align: 'center'});
+            doc.setFontSize(11); doc.text(`Local: ${c.nombre}`, 15, 25);
+            doc.setFontSize(9); doc.text(`Fecha del conteo: ${fechaConteo}`, 15, 31);
+
+            doc.autoTable({
+                startY: 36, head: [['Producto', 'Precio', 'Stock Ant.', 'Contado', 'Vendido', 'Subtotal']], body: bodyData, theme: 'grid',
+                styles: { fontSize: 8.5, cellPadding: 2 }, headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+                columnStyles: { 0: { cellWidth: 75 }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' }, 5: { halign: 'center', fontStyle: 'bold' } }
+            });
+
+            let finalY = doc.lastAutoTable.finalY + 10;
+            doc.setFontSize(12);
+            doc.text(`Total a Cobrar: $${totalVendido}`, 15, finalY);
+
+            doc.save(`Conteo_${c.nombre.replace(/\s+/g, '_')}_${fechaConteo.replace(/\//g, '-')}.pdf`);
+        } catch(e) { alert("⚠️ Error PDF: " + e.message); }
+    }
+
     // AQUI MODIFIQUE LAS FECHAS AUTOMATICAS EN EL PDF
     function exportarPDFConsignacionFoto(historyId) {
         try {
