@@ -437,7 +437,7 @@
         return {
             productos: [], familias: [], listas: [], clientes: [],
             stock_consignacion: {}, historial_consignacion: [], ventas: [],
-            precios_manuales: {}, pres_manuales: {}
+            precios_manuales: {}, pres_manuales: {}, conteos_pendientes: {}
         };
     }
 
@@ -453,7 +453,8 @@
             historial_consignacion: JSON.parse(localStorage.getItem('mjp3_hist_cons')) || [],
             ventas: JSON.parse(localStorage.getItem('mjp3_ventas')) || [],
             precios_manuales: JSON.parse(localStorage.getItem('mjp3_precios_manuales')) || {},
-            pres_manuales: JSON.parse(localStorage.getItem('mjp3_pres_manuales')) || {}
+            pres_manuales: JSON.parse(localStorage.getItem('mjp3_pres_manuales')) || {},
+            conteos_pendientes: {}
         };
     }
 
@@ -485,6 +486,8 @@
             if(!l.celdasOcultas) l.celdasOcultas = [];
         });
         db.clientes.forEach(c => { if(!c.ocultos) c.ocultos = []; });
+        if (!db.conteos_pendientes) db.conteos_pendientes = {};
+        if(!db.conteos_pendientes) db.conteos_pendientes = {};
 
         for (let cId in db.stock_consignacion) {
             for (let pId in db.stock_consignacion[cId]) {
@@ -1163,10 +1166,12 @@
         if(!db.stock_consignacion[cid]) db.stock_consignacion[cid] = {};
         let c = db.clientes.find(x => x.id === cid);
         if(!c.ocultos) c.ocultos = [];
+        if(!db.conteos_pendientes) db.conteos_pendientes = {};
         
         let listaCons = db.listas.find(l => l.nombre.toLowerCase().includes('consign'));
         let lid = listaCons ? listaCons.id : null;
         let margenCons = listaCons ? listaCons.margen : 45;
+        let pendiente = db.conteos_pendientes[cid];
 
         let isCheckedM2 = document.getElementById('m2-mostrar-ocultos')?.checked ? 'checked' : '';
 
@@ -1187,11 +1192,25 @@
                     <button onclick="m2_editarCliente('${cid}')" style="background:var(--info); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">✏️ Editar datos</button>
                 </div>
             </div>
-            
+
+            <button class="btn btn-outline" style="margin-top:0; margin-bottom:10px; font-size:12px; padding:10px;" onclick="m2_mostrarCargaInicial('${cid}')">🆕 Cargar / Ajustar Stock (sin venta)</button>
+            `;
+
+        if (pendiente) {
+            html += `
+            <div style="background:#fff3cd; border:1px solid #ffe69c; border-radius:8px; padding:10px; margin-bottom:12px; font-size:12px; color:#856404;">
+                <b>📋 Conteo pendiente del ${pendiente.fecha}</b><br>
+                Vendido a cobrar: <b>$${pendiente.totalVendido}</b> — cargá abajo lo que repongas hoy y confirmá para cerrar el ciclo.<br>
+                <button onclick="m2_descartarConteo('${cid}')" style="background:none; border:none; color:var(--danger); text-decoration:underline; font-size:11px; padding:0; margin-top:6px; cursor:pointer;">🗑️ Descartar este conteo</button>
+            </div>`;
+        } else {
+            html += `
             <div style="font-size:11px; color:#555; margin-bottom:10px; background:#e8f4f8; padding:8px; border-radius:6px;">
                 <b>Lógica de Precios:</b> Se cobra lo vendido al <b>$ Cobro</b>. La reposición y el stock que quede se actualizarán al <b>$ Nuevo</b> para la próxima visita.
-            </div>
-            
+            </div>`;
+        }
+
+        html += `
             <label class="chk-label" style="display:inline-flex; margin-bottom:10px; font-size:11px; padding:4px 8px;">
                 <input type="checkbox" id="m2-mostrar-ocultos" onchange="m2_abrirPlanillaMaestra()" ${isCheckedM2}> Mostrar productos ocultados
             </label>
@@ -1228,21 +1247,44 @@
                 
                 let btnVis = `<button onclick="m2_toggleVisibilidadLocal('${cid}', '${p.id}')" style="background:none;border:none;cursor:pointer;font-size:12px;margin-left:4px;">${estaOculto ? '➕' : '❌'}</button>`;
                 let trStyle = estaOculto ? 'opacity:0.5; background:#f9f9f9;' : '';
+                let pendItem = pendiente ? pendiente.items[p.id] : null;
 
-                innerHtml += `
-                <tr style="${trStyle}">
-                    <td style="text-align:left; line-height:1.2;">
-                        <b style="color:var(--dark); ${estaOculto ? 'text-decoration:line-through;':''}">${p.nombre}</b>${btnVis}<br>
-                        <span style="font-size:9px; color:#555;"><b>Cobro: $${pCobro}</b> | Nuevo: $${pActual}</span>
-                        <input type="hidden" id="m2-pcobro-${p.id}" value="${pCobro}">
-                        <input type="hidden" id="m2-pactual-${p.id}" value="${pActual}">
-                    </td>
-                    <td id="m2-ant-${p.id}" style="color:#666;">${stkAnt}</td>
-                    <td><input type="number" class="input-cons" id="m2-cont-${p.id}" oninput="m2_calcTotalPlanilla()" placeholder="-"></td>
-                    <td id="m2-vend-${p.id}" style="color:var(--danger); font-weight:bold; background:#fdf2f2;">0</td>
-                    <td><input type="number" class="input-cons" id="m2-repo-${p.id}" oninput="m2_calcTotalPlanilla()" placeholder="-"></td>
-                    <td id="m2-fin-${p.id}" style="color:var(--success); font-weight:bold; background:#f2fdf2;">${stkAnt}</td>
-                </tr>`;
+                if (pendiente) {
+                    let antMostrado = pendItem ? pendItem.ant : stkAnt;
+                    let contMostrado = pendItem ? pendItem.cont : stkAnt;
+                    let vendMostrado = pendItem ? pendItem.vend : 0;
+                    let pCobroPend = pendItem ? pendItem.pCobro : pCobro;
+
+                    innerHtml += `
+                    <tr style="${trStyle}">
+                        <td style="text-align:left; line-height:1.2;">
+                            <b style="color:var(--dark); ${estaOculto ? 'text-decoration:line-through;':''}">${p.nombre}</b>${btnVis}<br>
+                            <span style="font-size:9px; color:#555;"><b>Cobro: $${pCobroPend}</b> | Nuevo: $${pActual}</span>
+                            <input type="hidden" id="m2-pcobro-${p.id}" value="${pCobroPend}">
+                            <input type="hidden" id="m2-pactual-${p.id}" value="${pActual}">
+                        </td>
+                        <td id="m2-ant-${p.id}" style="color:#666;">${antMostrado}</td>
+                        <td style="color:#888; font-style:italic;">${contMostrado}</td>
+                        <td id="m2-vend-${p.id}" style="color:var(--danger); font-weight:bold; background:#fdf2f2;">${vendMostrado}</td>
+                        <td><input type="number" class="input-cons" id="m2-repo-${p.id}" oninput="m2_actualizarFinPendiente('${p.id}', ${contMostrado})" placeholder="-"></td>
+                        <td id="m2-fin-${p.id}" style="color:var(--success); font-weight:bold; background:#f2fdf2;">${contMostrado}</td>
+                    </tr>`;
+                } else {
+                    innerHtml += `
+                    <tr style="${trStyle}">
+                        <td style="text-align:left; line-height:1.2;">
+                            <b style="color:var(--dark); ${estaOculto ? 'text-decoration:line-through;':''}">${p.nombre}</b>${btnVis}<br>
+                            <span style="font-size:9px; color:#555;"><b>Cobro: $${pCobro}</b> | Nuevo: $${pActual}</span>
+                            <input type="hidden" id="m2-pcobro-${p.id}" value="${pCobro}">
+                            <input type="hidden" id="m2-pactual-${p.id}" value="${pActual}">
+                        </td>
+                        <td id="m2-ant-${p.id}" style="color:#666;">${stkAnt}</td>
+                        <td><input type="number" class="input-cons" id="m2-cont-${p.id}" oninput="m2_calcTotalPlanilla()" placeholder="-"></td>
+                        <td id="m2-vend-${p.id}" style="color:var(--danger); font-weight:bold; background:#fdf2f2;">0</td>
+                        <td><input type="number" class="input-cons" id="m2-repo-${p.id}" oninput="m2_calcTotalPlanilla()" placeholder="-"></td>
+                        <td id="m2-fin-${p.id}" style="color:var(--success); font-weight:bold; background:#f2fdf2;">${stkAnt}</td>
+                    </tr>`;
+                }
             });
 
             if(renderCount > 0) {
@@ -1256,17 +1298,100 @@
             
             <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #e9ecef;">
                 <div style="display: flex; justify-content: space-between; font-size: 18px; margin-bottom: 10px; border-bottom:1px solid #ddd; padding-bottom:10px;">
-                    <span>Total a Cobrar Hoy:</span>
-                    <b style="color:var(--danger);">$<span id="m2-total-vendido">0</span></b>
+                    <span>Total a Cobrar:</span>
+                    <b style="color:var(--danger);">$<span id="m2-total-vendido">${pendiente ? pendiente.totalVendido : 0}</span></b>
                 </div>
                 <label>Pago recibido en el momento ($):</label>
                 <input type="number" id="m2-cobrado-hoy" value="0" style="font-size: 18px; font-weight: bold; color: var(--success);">
-                
-                <button class="btn btn-primary" style="margin-top:20px;" onclick="m2_guardarPlanillaMaestra()">💾 Guardar Visita y Cerrar Ciclo</button>
+                `;
+
+        if (pendiente) {
+            html += `<button class="btn btn-primary" style="margin-top:20px;" onclick="m2_confirmarReposicion('${cid}')">✅ Confirmar Reposición y Cerrar Ciclo</button>`;
+        } else {
+            html += `
+                <button class="btn btn-outline" style="margin-top:20px; border-color:var(--accent); color:var(--accent);" onclick="m2_guardarConteo('${cid}')">📋 Guardar Solo Conteo (repongo después)</button>
+                <button class="btn btn-primary" style="margin-top:10px;" onclick="m2_confirmarReposicion('${cid}')">✅ Contar y Reponer Ahora (todo junto)</button>`;
+        }
+
+        html += `
             </div>
         </div>`;
         cont.innerHTML = html;
         cont.style.display = 'block';
+    }
+
+    // ---------- CARGA INICIAL / AJUSTE DE STOCK (sin venta) ----------
+    function m2_mostrarCargaInicial(cid) {
+        let c = db.clientes.find(x => x.id === cid);
+        let cont = document.getElementById('m2-planilla-container');
+        if (!db.stock_consignacion[cid]) db.stock_consignacion[cid] = {};
+
+        let listaCons = db.listas.find(l => l.nombre.toLowerCase().includes('consign'));
+        let lid = listaCons ? listaCons.id : null;
+        let margenCons = listaCons ? listaCons.margen : 45;
+
+        let html = `
+        <div style="background:#fff; padding:10px; border-radius:12px; border:1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:10px;">
+                <h4 style="margin:0; color:var(--primary);">🆕 Carga / Ajuste de Stock: ${c.nombre}</h4>
+            </div>
+            <div style="font-size:11px; color:#555; margin-bottom:10px; background:#e8f4f8; padding:8px; border-radius:6px;">
+                Cargá la cantidad que dejás de cada producto. Esto <b>no</b> genera venta ni cobro — solo fija el stock actual en el local. Dejá vacío lo que no quieras tocar.
+            </div>
+            <button class="btn btn-outline" style="margin-top:0; margin-bottom:10px; font-size:12px; padding:8px;" onclick="m2_abrirPlanillaMaestra()">← Volver a Planilla de Visita</button>
+            <div class="table-responsive">
+                <table class="tabla-consignacion">
+                    <thead><tr><th>Producto</th><th>Stock Actual</th><th style="color:var(--accent);">Nueva Cantidad</th></tr></thead>
+                    <tbody>`;
+
+        db.familias.forEach(f => {
+            let prods = db.productos.filter(p => p.familia === f);
+            let innerHtml = ""; let renderCount = 0;
+            prods.forEach(p => {
+                let stockObj = db.stock_consignacion[cid][p.id] || {cant: 0, pV: 0};
+                renderCount++;
+                innerHtml += `<tr>
+                    <td style="text-align:left;"><b>${p.nombre}</b></td>
+                    <td>${stockObj.cant}</td>
+                    <td><input type="number" class="input-cons" id="m2-inicial-${p.id}" placeholder="-"></td>
+                </tr>`;
+            });
+            if (renderCount > 0) html += `<tr class="fam-row"><td colspan="3">${f}</td></tr>` + innerHtml;
+        });
+
+        html += `</tbody></table></div>
+            <button class="btn btn-success" style="margin-top:15px;" onclick="m2_guardarCargaInicial('${cid}')">💾 Guardar Carga de Stock</button>
+        </div>`;
+        cont.innerHTML = html;
+        cont.style.display = 'block';
+    }
+
+    function m2_guardarCargaInicial(cid) {
+        let listaCons = db.listas.find(l => l.nombre.toLowerCase().includes('consign'));
+        let lid = listaCons ? listaCons.id : null;
+        let margenCons = listaCons ? listaCons.margen : 45;
+        let cambios = 0;
+
+        if (!db.stock_consignacion[cid]) db.stock_consignacion[cid] = {};
+
+        db.productos.forEach(p => {
+            let el = document.getElementById(`m2-inicial-${p.id}`);
+            if (!el || el.value === "") return;
+            let cant = parseInt(el.value);
+            if (isNaN(cant)) return;
+
+            let colUsar = p.esUnidad ? 'unidad' : '100g';
+            let pActual = lid ? obtenerPrecioFinal(lid, p.id, colUsar, p.costo, p.esUnidad, margenCons).final : calcularPrecioBase(p.costo, '100g', p.esUnidad, margenCons);
+
+            db.stock_consignacion[cid][p.id] = { cant: cant, pV: pActual };
+            cambios++;
+        });
+
+        if (cambios === 0) return alert("⚠️ No cargaste ninguna cantidad.");
+
+        saveDB();
+        alert(`✅ Se cargó el stock de ${cambios} producto(s).`);
+        m2_abrirPlanillaMaestra();
     }
 
     function m2_calcTotalPlanilla() {
@@ -1299,11 +1424,65 @@
         document.getElementById('m2-total-vendido').innerText = total;
     }
 
-    // AQUI MODIFIQUE EL GUARDADO PARA QUE AGARRE TODO EL CATALOGO VISIBLE
-    function m2_guardarPlanillaMaestra() {
-        let cid = document.getElementById('m2-cliente-select').value;
+    // Solo actualiza la columna "Fin" mientras hay un conteo pendiente (Cont y Vend ya están fijos)
+    function m2_actualizarFinPendiente(pid, contFijo) {
+        let repoEl = document.getElementById(`m2-repo-${pid}`);
+        let repoStr = repoEl ? repoEl.value : "";
+        let repo = repoStr === "" ? 0 : parseInt(repoStr);
+        let finEl = document.getElementById(`m2-fin-${pid}`);
+        if (finEl) finEl.innerText = contFijo + (isNaN(repo) ? 0 : repo);
+    }
+
+    // ---------- PASO 1: Guardar solo el conteo (para reponer después) ----------
+    function m2_guardarConteo(cid) {
+        let totalVendido = 0;
+        let items = {};
+        let huboConteo = false;
+
+        db.productos.forEach(p => {
+            let elCont = document.getElementById(`m2-cont-${p.id}`);
+            if (!elCont) return;
+
+            let stockObj = (db.stock_consignacion[cid] && db.stock_consignacion[cid][p.id]) || {cant: 0, pV: 0};
+            let ant = stockObj.cant;
+            let contStr = elCont.value;
+            let cont = contStr === "" ? ant : parseInt(contStr);
+            let vend = ant - cont;
+            if (vend < 0) vend = 0;
+
+            let pCobroEl = document.getElementById(`m2-pcobro-${p.id}`);
+            let pCobro = pCobroEl ? parseInt(pCobroEl.value) : 0;
+
+            if (contStr !== "") huboConteo = true;
+
+            items[p.id] = { ant: ant, cont: cont, vend: vend, pCobro: pCobro };
+            if (vend > 0) totalVendido += vend * pCobro;
+        });
+
+        if (!huboConteo) return alert("⚠️ No cargaste ningún conteo todavía.");
+
+        db.conteos_pendientes[cid] = {
+            fecha: new Date().toLocaleDateString(),
+            items: items,
+            totalVendido: totalVendido
+        };
+        saveDB();
+        alert("✅ Conteo guardado. Cuando repongas (hoy o el día que sea), volvé a esta pantalla para cerrar el ciclo.");
+        m2_abrirPlanillaMaestra();
+    }
+
+    function m2_descartarConteo(cid) {
+        if (!confirm("¿Descartar el conteo pendiente? Vas a tener que volver a contar.")) return;
+        delete db.conteos_pendientes[cid];
+        saveDB();
+        m2_abrirPlanillaMaestra();
+    }
+
+    // ---------- PASO 2 (o único paso si se hace todo junto): Reponer y cerrar el ciclo ----------
+    function m2_confirmarReposicion(cid) {
         let c = db.clientes.find(x => x.id === cid);
-        let totalVendido = parseInt(document.getElementById('m2-total-vendido').innerText) || 0;
+        let pendiente = db.conteos_pendientes[cid];
+        let totalVendido = pendiente ? pendiente.totalVendido : (parseInt(document.getElementById('m2-total-vendido').innerText) || 0);
         let cobrado = parseInt(document.getElementById('m2-cobrado-hoy').value) || 0;
         let debe = totalVendido - cobrado;
 
@@ -1311,49 +1490,55 @@
         let huboMovimiento = false;
         let listaCons = db.listas.find(l => l.nombre.toLowerCase().includes('consign'));
 
+        if (!db.stock_consignacion[cid]) db.stock_consignacion[cid] = {};
+
         db.productos.forEach(p => {
-            let stockObj = db.stock_consignacion[cid][p.id] || {cant: 0, pV: 0};
-            let stkAnt = stockObj.cant;
-            
-            // Verificamos si debe estar en la planilla (misma lógica que la visualización)
+            let stockObjPrevio = db.stock_consignacion[cid][p.id] || {cant: 0, pV: 0};
+
             let estaOcultoPorCliente = c.ocultos && c.ocultos.includes(p.id);
             let estaOcultoEnListaM1 = listaCons && listaCons.ocultos && listaCons.ocultos.includes(p.id);
-            let estaOculto = estaOcultoPorCliente || (estaOcultoEnListaM1 && stkAnt === 0);
+            let estaOculto = estaOcultoPorCliente || (estaOcultoEnListaM1 && stockObjPrevio.cant === 0);
+            if (estaOculto) return;
 
-            if (estaOculto) return; // Si está oculto de verdad, lo salteamos.
-
-            let elCont = document.getElementById(`m2-cont-${p.id}`);
-            if(!elCont) return; 
-            
-            let ant = parseInt(document.getElementById(`m2-ant-${p.id}`).innerText) || 0;
-            let contStr = elCont.value;
-            let repoStr = document.getElementById(`m2-repo-${p.id}`).value;
-            
-            let cont = contStr === "" ? ant : parseInt(contStr);
+            let repoEl = document.getElementById(`m2-repo-${p.id}`);
+            if (!repoEl) return;
+            let repoStr = repoEl.value;
             let repo = repoStr === "" ? 0 : parseInt(repoStr);
-            let vend = parseInt(document.getElementById(`m2-vend-${p.id}`).innerText) || 0;
-            let fin = parseInt(document.getElementById(`m2-fin-${p.id}`).innerText) || 0;
-            
-            let pCobro = parseInt(document.getElementById(`m2-pcobro-${p.id}`).value);
-            let pActualNuevo = parseInt(document.getElementById(`m2-pactual-${p.id}`).value);
 
-            db.stock_consignacion[cid][p.id] = { cant: fin, pV: pActualNuevo };
-            
-            if (ant > 0 || contStr !== "" || repoStr !== "") {
-                huboMovimiento = true;
+            let ant, cont, vend, pCobro;
+            if (pendiente && pendiente.items[p.id]) {
+                ant = pendiente.items[p.id].ant;
+                cont = pendiente.items[p.id].cont;
+                vend = pendiente.items[p.id].vend;
+                pCobro = pendiente.items[p.id].pCobro;
+            } else {
+                let contEl = document.getElementById(`m2-cont-${p.id}`);
+                let contStr = contEl ? contEl.value : "";
+                ant = stockObjPrevio.cant;
+                cont = contStr === "" ? ant : parseInt(contStr);
+                vend = ant - cont;
+                if (vend < 0) vend = 0;
+                let pCobroEl = document.getElementById(`m2-pcobro-${p.id}`);
+                pCobro = pCobroEl ? parseInt(pCobroEl.value) : 0;
+                if (ant > 0 || contStr !== "" || repoStr !== "") huboMovimiento = true;
             }
 
-            // AHORA GUARDAMOS EN EL HISTORIAL TODOS LOS PRODUCTOS ACTIVOS, AUNQUE NO SE HAYAN MOVIDO
+            let fin = cont + repo;
+            let pActualEl = document.getElementById(`m2-pactual-${p.id}`);
+            let pActualNuevo = pActualEl ? parseInt(pActualEl.value) : pCobro;
+
+            db.stock_consignacion[cid][p.id] = { cant: fin, pV: pActualNuevo };
+
             lineasPlanilla.push({
-                fam: p.familia, pid: p.id, nom: p.nombre, pV: pCobro, 
-                ant: ant, cont: contStr, vend: vend, repo: repoStr, fin: fin
+                fam: p.familia, pid: p.id, nom: p.nombre, pV: pCobro,
+                ant: ant, cont: String(cont), vend: vend, repo: repoStr, fin: fin
             });
         });
-        
-        if(!huboMovimiento) return alert("⚠️ No anotaste ningún dato nuevo en la planilla.");
+
+        if (!huboMovimiento && !pendiente) return alert("⚠️ No anotaste ningún dato nuevo en la planilla.");
 
         c.deuda += debe;
-        
+
         db.historial_consignacion.push({
             id: Date.now().toString(),
             clienteId: cid,
@@ -1363,12 +1548,14 @@
             debeGenerado: debe,
             planilla: lineasPlanilla
         });
-        
-        saveDB(); 
+
+        delete db.conteos_pendientes[cid];
+
+        saveDB();
         alert("✅ Ciclo de consignación cerrado.");
         document.getElementById('m2-cliente-select').value = '';
         document.getElementById('m2-planilla-container').style.display = 'none';
-        initM2(); 
+        initM2();
     }
 
     function m2_renderHistorial() {
@@ -1512,288 +1699,4 @@
         };
         db.ventas.unshift(remito);
         saveDB(); carrito_venta = []; m3_renderCarrito(); document.getElementById('m3-cliente').value='';
-        alert("✅ Remito Guardado."); m3_renderPedidos();
-    }
-
-    function m3_renderPedidos() {
-        let cont = document.getElementById('m3-pedidos-container'); cont.innerHTML = '';
-        if(db.ventas.length === 0) { cont.innerHTML = '<p style="text-align:center; font-size:12px; color:#888;">No hay pedidos registrados.</p>'; return;}
-        
-        db.ventas.forEach(v => {
-            let colorEst = v.estado === 'Entregado' ? 'badge-done' : 'badge-pending';
-            let colorPag = v.pago === 'Pagado' ? 'badge-done' : 'badge-pending';
-            let itemsHtml = v.estado === 'Preparación' ? 
-                `<div style="background:#f4f6f7; padding:10px; border-radius:6px; margin-bottom:10px; border: 1px solid #e0e0e0;"><b style="font-size:12px; color:var(--secondary); display:block; margin-bottom:5px;">📋 Detalle a preparar:</b><ul style="margin: 0; padding-left: 20px; font-size:12px; color:#333;">${v.items.map(i => `<li style="margin-bottom:3px;"><b>${i.cant}x</b> ${i.nombre}</li>`).join('')}</ul></div>` : 
-                `<div style="font-size:11px; color:#888; font-style:italic; margin-bottom:10px; padding:5px; background:#f9f9f9; border-radius:4px; text-align:center;">Ítems ocultos (Pedido Entregado)</div>`;
-
-            cont.innerHTML += `
-            <div class="card-item">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                    <b style="font-size:14px;">${v.cliente}</b>
-                    <span style="font-size:15px; font-weight:900; color:var(--success);">$${v.total}</span>
-                </div>
-                <div style="font-size:11px; color:#666; margin-bottom: 10px;">ID: #${v.id.slice(-4)} | Fecha: ${v.fecha}</div>
-                ${itemsHtml}
-                <div style="display:flex; gap:10px; margin-bottom:10px;">
-                    <span class="badge ${colorEst}" onclick="m3_toggleEstado('${v.id}', 'estado')" style="cursor:pointer;">Estado: ${v.estado}</span>
-                    <span class="badge ${colorPag}" onclick="m3_toggleEstado('${v.id}', 'pago')" style="cursor:pointer;">Cobro: ${v.pago}</span>
-                </div>
-                <div class="export-actions">
-                    <button class="btn btn-small btn-outline" style="margin-top:0;" onclick="exportarPDF('remito', '${v.id}')">📄 PDF</button>
-                    <button class="btn btn-small btn-outline" style="margin-top:0;" onclick="enviarMail('remito', '${v.id}')">✉️ Wapp/Mail</button>
-                </div>
-            </div>`;
-        });
-    }
-
-    function m3_toggleEstado(id, tipo) {
-        let v = db.ventas.find(x => x.id === id);
-        if(tipo === 'estado') v.estado = v.estado === 'Preparación' ? 'Entregado' : 'Preparación';
-        if(tipo === 'pago') v.pago = v.pago === 'Pendiente' ? 'Pagado' : 'Pendiente';
-        saveDB(); m3_renderPedidos();
-    }
-
-    // ==========================================
-    // EXPORTACIÓN PDF Y TEXTOS PARA COMPARTIR
-    // ==========================================
-    
-    // AQUI MODIFIQUE LAS FECHAS AUTOMATICAS EN EL PDF
-    function exportarPDFConsignacionFoto(historyId) {
-        try {
-            let h = db.historial_consignacion.find(x => x.id === historyId);
-            let c = db.clientes.find(x => x.id === h.clienteId);
-            
-            // Buscar la fecha de la visita anterior
-            let visitasCliente = db.historial_consignacion.filter(x => x.clienteId === h.clienteId);
-            let currentIndex = visitasCliente.findIndex(x => x.id === historyId);
-            let fechaAnterior = "Inicio";
-            if (currentIndex > 0) {
-                fechaAnterior = visitasCliente[currentIndex - 1].fecha;
-            }
-
-            const { jsPDF } = window.jspdf; const doc = new jsPDF();
-            
-            doc.setFontSize(12); doc.text(`Lista de precios desde ${fechaAnterior} al ${h.fecha}`, 105, 15, {align: 'center'});
-            doc.setFontSize(11); doc.text(`Cliente: ${c.nombre}`, 15, 25); doc.line(30, 26, 100, 26); 
-            
-            let bodyData = [];
-            db.familias.forEach(f => {
-                let itemsFam = h.planilla.filter(x => x.fam === f);
-                if(itemsFam.length > 0) {
-                    bodyData.push([{ content: f.toUpperCase(), colSpan: 7, styles: { fillColor: [210, 210, 210], fontStyle: 'bold', halign: 'center' } }]);
-                    itemsFam.forEach(i => {
-                        let pFull = db.productos.find(prod => prod.id === i.pid);
-                        let nombreDisplay = i.nom;
-                        if (pFull && pFull.descripcion && pFull.descripcion.trim() !== "") nombreDisplay += `\n(${pFull.descripcion})`;
-                        
-                        // Si no hay datos ingresados, mostramos un "-" en lugar de un campo vacío
-                        let strCont = i.cont === "" ? "-" : i.cont;
-                        let strRepo = i.repo === "" ? "-" : i.repo;
-                        
-                        bodyData.push([nombreDisplay, `$${i.pV}`, i.ant.toString(), strCont, i.vend.toString(), strRepo, i.fin.toString()]);
-                    });
-                }
-            });
-            bodyData.push([{content: 'Total:', colSpan: 4, styles: {fontStyle: 'bold', halign: 'right'}}, {content: `$${h.vendidoTotal}`, colSpan: 3, styles: {fontStyle: 'bold', textColor: [0,0,200]}}]);
-
-            doc.autoTable({
-                startY: 30, head: [['Producto', 'Precio', 'Stock ant', 'Conteo', 'Vendido', 'Reponer', 'Stock']], body: bodyData, theme: 'grid',
-                styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
-                columnStyles: { 0: { cellWidth: 70 }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' }, 5: { halign: 'center' }, 6: { halign: 'center', fontStyle: 'bold' } }
-            });
-            
-            let finalY = doc.lastAutoTable.finalY + 10;
-            doc.setFontSize(10);
-            doc.text(`Contacto Javier Munhó cel 1138988346 Marcela cel 1157081322 alias: javiermix.lemon`, 15, finalY);
-            doc.text(`Precios en efectivo o transferencia.`, 15, finalY + 5);
-            doc.text(`Fecha de Visita: ${h.fecha}`, 150, finalY + 5);
-
-            doc.save(`Planilla_${c.nombre.replace(/\s+/g, '_')}_${h.fecha.replace(/\//g, '-')}.pdf`);
-        } catch(e) { alert("⚠️ Error PDF: " + e.message); }
-    }
-
-    function exportarPDF(tipo, idRel) {
-        try {
-            const { jsPDF } = window.jspdf; const doc = new jsPDF();
-            
-            if(tipo === 'lista') {
-                let listId = document.getElementById('m1-lista-select').value;
-                if(!listId) return alert("Seleccioná una lista primero.");
-                let isProveedor = (listId === 'proveedor');
-                let lista = isProveedor ? {nombre: 'Lista Proveedor (Costos Base)', columnas: ['Costo Base'], margen: 0} : db.listas.find(x => x.id === listId);
-                
-                doc.setFillColor(44, 62, 80); 
-                doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
-                
-                doc.setTextColor(255, 255, 255);
-                doc.setFontSize(22);
-                doc.setFont("helvetica", "bold");
-                doc.text(lista.nombre.toUpperCase(), doc.internal.pageSize.getWidth() / 2, 18, { align: "center" });
-                
-                let fechaHoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
-                doc.setFontSize(10);
-                doc.setFont("helvetica", "normal");
-                doc.text(`Actualizada al: ${fechaHoy}`, doc.internal.pageSize.getWidth() / 2, 25, { align: "center" });
-
-                let headers = ['PRODUCTO'];
-                if(isProveedor) headers.push('COSTO BASE'); 
-                else {
-                    lista.columnas.forEach(c => headers.push(((lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c).toUpperCase()));
-                }
-
-                let bodyData = [];
-                db.familias.forEach(f => {
-                    let prods = db.productos.filter(p => p.familia === f);
-                    if(prods.length > 0) {
-                        let hasItems = false; let famRows = [];
-                        prods.forEach(p => {
-                            if(!isProveedor && lista.ocultos && lista.ocultos.includes(p.id)) return;
-                            hasItems = true;
-                            let nombreDisplay = p.nombre;
-                            if (p.descripcion && p.descripcion.trim() !== "") nombreDisplay += `\n(${p.descripcion})`;
-                            
-                            let row = [nombreDisplay];
-                            if(isProveedor) row.push(`$${p.costo}`);
-                            else {
-                                lista.columnas.forEach(c => {
-                                    let keyCelda = `${p.id}_${c}`;
-                                    if (lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda)) row.push('-');
-                                    else if ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad')) row.push('-');
-                                    else row.push(`$${obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen).final}`);
-                                });
-                            }
-                            famRows.push(row);
-                        });
-                        
-                        if(hasItems) {
-                            bodyData.push([{ 
-                                content: f.toUpperCase(), 
-                                colSpan: headers.length, 
-                                styles: { fillColor: [230, 126, 34], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', fontSize: 10 } 
-                            }]);
-                            bodyData = bodyData.concat(famRows);
-                        }
-                    }
-                });
-
-                doc.autoTable({ 
-                    startY: 35, 
-                    head: [headers], 
-                    body: bodyData, 
-                    theme: 'striped', 
-                    styles: { fontSize: 8.5, cellPadding: 1.5, valign: 'middle' }, 
-                    headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], halign: 'center', fontSize: 9 },
-                    columnStyles: { 0: { cellWidth: 85, fontStyle: 'bold' } },
-                    didParseCell: function(data) {
-                        if (data.section === 'body' && data.column.index > 0 && data.row.raw.length > 1) { 
-                            data.cell.styles.halign = 'center';
-                        }
-                    },
-                    didDrawPage: function (data) {
-                        let textY = doc.internal.pageSize.getHeight() - 10;
-                        doc.setFontSize(8);
-                        doc.setFont("helvetica", "italic");
-                        doc.setTextColor(150, 150, 150);
-                        doc.text("Precios sujetos a modificaciones sin previo aviso.", data.settings.margin.left, textY);
-                        doc.text(`Página ${doc.internal.getNumberOfPages()}`, doc.internal.pageSize.getWidth() / 2, textY, { align: "center" });
-                        doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", doc.internal.pageSize.getWidth() - data.settings.margin.right, textY, { align: "right" });
-                    }
-                });
-                doc.save(`Lista_${lista.nombre.replace(/\s+/g, '_')}.pdf`);
-                
-            } else if(tipo === 'remito') {
-                let v = db.ventas.find(x => x.id === idRel);
-                let titulo = `Remito #${v.id.slice(-4)} - ${v.cliente}`;
-                let body = `Fecha: ${v.fecha}\n\n`;
-                v.items.forEach(i => body += `▫️ ${i.cant}x ${i.nombre} - $${i.subtotal}\n`);
-                body += `\nTOTAL A PAGAR: $${v.total}`;
-                doc.setFontSize(18); doc.text(titulo, 15, 20); doc.setFontSize(11);
-                let lineas = doc.splitTextToSize(body, 180); doc.text(lineas, 15, 30);
-                doc.save(`${titulo.replace(/\s+/g, '_')}.pdf`);
-            }
-        } catch(e) { alert("⚠️ Error PDF: " + e.message); }
-    }
-
-    function enviarMail(tipo, idRel) {
-        let textoFinal = ""; let titulo = ""; let telSugerido = "";
-        
-        if(tipo === 'remito') {
-            let v = db.ventas.find(x => x.id === idRel);
-            titulo = `Remito #${v.id.slice(-4)} - ${v.cliente}`;
-            textoFinal = `*${titulo}*\nTu pedido (${v.fecha}):\n\n`;
-            v.items.forEach(i => textoFinal += `▫️ ${i.cant}x ${i.nombre} - $${i.subtotal}\n`);
-            textoFinal += `\n*TOTAL A PAGAR: $${v.total}*\n\nGracias!`;
-            
-        } else if (tipo === 'lista') {
-            let listId = document.getElementById('m1-lista-select').value;
-            if(!listId) return alert("Seleccioná una lista primero.");
-            let isProveedor = (listId === 'proveedor');
-            let lista = isProveedor ? {nombre: 'Proveedor', columnas: ['Costo Base'], margen: 0} : db.listas.find(x => x.id === listId);
-            
-            titulo = `Lista de Precios: ${lista.nombre}`; textoFinal = `*${titulo}*\n\n`;
-            
-            db.familias.forEach(f => {
-                let prods = db.productos.filter(p => p.familia === f);
-                let textRows = "";
-                prods.forEach(p => {
-                    if(!isProveedor && lista.ocultos && lista.ocultos.includes(p.id)) return;
-                    let descTxt = p.descripcion && p.descripcion.trim() !== "" ? ` (${p.descripcion})` : '';
-                    let tempRow = `\n▫️ *${p.nombre}*${descTxt}\n`;
-                    let hasPrices = false;
-                    if(isProveedor) { tempRow += `   - Costo Base: $${p.costo}\n`; hasPrices = true; }
-                    else {
-                        lista.columnas.forEach(c => {
-                            let keyCelda = `${p.id}_${c}`;
-                            if (lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda)) return; 
-
-                            if (!((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad'))) {
-                                let colName = (lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c;
-                                let keyPres = `${lista.id}_${p.id}_${c}`;
-                                let nombrePres = db.pres_manuales[keyPres] || colName;
-                                let pUnit = obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen).final;
-                                tempRow += `   - ${nombrePres}: $${pUnit}\n`;
-                                hasPrices = true;
-                            }
-                        });
-                    }
-                    if (hasPrices) textRows += tempRow;
-                });
-                if (textRows !== "") textoFinal += `\n*--- ${f.toUpperCase()} ---*\n` + textRows;
-            });
-            
-        } else if (tipo === 'consignacion') {
-            let h = db.historial_consignacion.find(x => x.id === idRel);
-            let c = db.clientes.find(x => x.id === h.clienteId);
-            telSugerido = (c && c.telefono) ? c.telefono : "";
-            titulo = `Resumen Consignación - ${c.nombre}`;
-            textoFinal = `*${titulo}*\nFecha: ${h.fecha}\n\n*Movimientos de Stock:*\n`;
-            h.planilla.forEach(item => {
-                if (item.vend > 0 || (item.repo !== "" && parseInt(item.repo) > 0)) {
-                    textoFinal += `▫️ ${item.nom}: `;
-                    let acts = [];
-                    if (item.vend > 0) acts.push(`Vendió ${item.vend} (a $${item.pV})`);
-                    if (item.repo !== "" && parseInt(item.repo) > 0) acts.push(`Dejó ${item.repo}`);
-                    textoFinal += acts.join(" | ") + `\n`;
-                }
-            });
-            textoFinal += `\n*Vendido: $${h.vendidoTotal}*\n*Abonado: $${h.cobrado}*\n*Deuda sumada: $${h.debeGenerado}*\n\n*Saldo Total Actual: $${c.deuda}*\n\nGracias!`;
-        }
-        
-        let tel = prompt("📱 Celular para WhatsApp (o vacío para Mail):", telSugerido);
-        if (tel && tel.trim() !== "") window.open(`https://wa.me/${tel.replace(/\D/g,'')}?text=${encodeURIComponent(textoFinal)}`, '_blank');
-        else window.open(`mailto:?subject=${encodeURIComponent(titulo)}&body=${encodeURIComponent(textoFinal)}`, '_blank');
-    }
-
-    iniciarApp();
-</script>
-
-<!-- Registro del Service Worker para que funcione como App (PWA) -->
-<script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service Worker no registrado:', err));
-        });
-    }
-</script>
-</body>
-</html>
+        aler
