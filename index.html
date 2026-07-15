@@ -425,13 +425,19 @@
         appId: "1:240648699932:web:2b252bd15e6a6eae96dfd9"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const fs = firebase.firestore();
-    try { fs.enablePersistence({ synchronizeTabs: true }); } catch(e) { /* ok si ya estaba habilitado */ }
-
-    // Todo el negocio guarda sus datos en UN solo documento en la nube.
-    // Si en el futuro querés separar por vendedor, cambiá 'principal' por otro nombre.
-    const DOC_REF = fs.collection('marjavpro').doc('principal');
+    let firebaseListo = false;
+    let fs, DOC_REF;
+    try {
+        firebase.initializeApp(firebaseConfig);
+        fs = firebase.firestore();
+        try { fs.enablePersistence({ synchronizeTabs: true }); } catch(e) { /* ok si ya estaba habilitado */ }
+        // Todo el negocio guarda sus datos en UN solo documento en la nube.
+        // Si en el futuro querés separar por vendedor, cambiá 'principal' por otro nombre.
+        DOC_REF = fs.collection('marjavpro').doc('principal');
+        firebaseListo = true;
+    } catch(e) {
+        console.warn('No se pudo inicializar Firebase:', e);
+    }
 
     function emptyDB() {
         return {
@@ -506,6 +512,10 @@
     function saveDB() {
         // Respaldo local inmediato por si se corta internet
         localStorage.setItem('mjp3_db_cache', JSON.stringify(db));
+        if (!firebaseListo || !DOC_REF) {
+            actualizarIndicador('⚠️ Sin conexión (guardado local)', '#e67e22');
+            return;
+        }
         actualizarIndicador('💾 Guardando...', '#f1c40f');
         if (guardadoPendiente) clearTimeout(guardadoPendiente);
         guardadoPendiente = setTimeout(() => {
@@ -525,6 +535,7 @@
 
     async function iniciarApp() {
         try {
+            if (!firebaseListo) throw new Error('Firebase no se pudo inicializar');
             let snap = await DOC_REF.get();
             if (snap.exists && snap.data() && Array.isArray(snap.data().productos)) {
                 db = snap.data();
@@ -534,9 +545,7 @@
                 db = cache || cargarLegacyLocalStorage() || emptyDB();
                 normalizarDB();
                 await DOC_REF.set(db);
-                document.getElementById('loading-overlay').style.display = 'none';
-                actualizarIndicador('☁️ Sincronizado', '#2ecc71');
-                nav('page-dashboard');
+                terminarCarga(true);
                 return;
             }
         } catch(e) {
@@ -546,13 +555,41 @@
             db = cache || cargarLegacyLocalStorage() || emptyDB();
         }
 
-        normalizarDB();
-        if (actualizados > 0) saveDB();
+        try {
+            normalizarDB();
+            if (actualizados > 0 && firebaseListo) saveDB();
+        } catch(e) {
+            console.warn('Error normalizando datos, se muestra igual con lo que haya:', e);
+        }
 
-        document.getElementById('loading-overlay').style.display = 'none';
-        actualizarIndicador(cloudOk ? '☁️ Sincronizado' : '⚠️ Modo local (sin conexión)', cloudOk ? '#2ecc71' : '#e67e22');
+        terminarCarga(cloudOk);
+    }
+
+    let appYaArranco = false;
+    function terminarCarga(conexionOk) {
+        if (appYaArranco) return;
+        appYaArranco = true;
+        let overlay = document.getElementById('loading-overlay');
+        if (overlay) overlay.style.display = 'none';
+        actualizarIndicador(conexionOk ? '☁️ Sincronizado' : '⚠️ Modo local (sin conexión)', conexionOk ? '#2ecc71' : '#e67e22');
         nav('page-dashboard');
     }
+
+    // Seguro: si por cualquier motivo la app no terminó de cargar en 10 segundos
+    // (mala señal, error inesperado), arranca igual mostrando lo que haya guardado
+    // localmente en vez de quedarse trabada en la pantalla de "Conectando...".
+    setTimeout(() => {
+        if (!appYaArranco) {
+            console.warn('Tiempo de espera agotado, arrancando en modo local.');
+            cloudOk = false;
+            try {
+                let cache = JSON.parse(localStorage.getItem('mjp3_db_cache') || 'null');
+                db = cache || cargarLegacyLocalStorage() || emptyDB();
+                normalizarDB();
+            } catch(e) { console.warn('Error en el arranque de emergencia:', e); }
+            terminarCarga(false);
+        }
+    }, 10000);
 
     function exportarTodoExcel() {
         try {

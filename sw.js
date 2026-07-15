@@ -1,10 +1,10 @@
 // Service Worker de marJav Pro
-// Cachea el "cascarón" de la app para que abra rápido y funcione offline.
+// v2: el HTML principal se pide siempre a internet primero (para que los
+// arreglos lleguen al toque), y solo se usa la copia guardada si no hay señal.
 // Los DATOS (productos, clientes, ventas, etc.) NO se cachean acá: viven en Firestore.
 
-const CACHE_NAME = 'marjavpro-v1';
+const CACHE_NAME = 'marjavpro-v2';
 const ARCHIVOS_CACHE = [
-    './index.html',
     './manifest.json',
     './icon-192.png',
     './icon-512.png'
@@ -36,6 +36,24 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    let esPaginaPrincipal = event.request.mode === 'navigate' ||
+        event.request.url.endsWith('index.html') ||
+        event.request.url.endsWith('/');
+
+    if (esPaginaPrincipal) {
+        // RED PRIMERO: así los arreglos nuevos llegan enseguida.
+        // Si no hay internet, recién ahí se usa la última copia guardada.
+        event.respondWith(
+            fetch(event.request).then((respuestaRed) => {
+                const clone = respuestaRed.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+                return respuestaRed;
+            }).catch(() => caches.match(event.request))
+        );
+        return;
+    }
+
+    // Para íconos/manifest (que casi no cambian): caché primero, más rápido.
     event.respondWith(
         caches.match(event.request).then((cached) => {
             const fetchPromise = fetch(event.request).then((respuestaRed) => {
