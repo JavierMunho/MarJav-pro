@@ -135,6 +135,7 @@
         </div>
         <div class="main-menu">
             <button class="btn btn-success" style="margin-top:0; padding:18px; font-size:16px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="forzarGuardadoManual()">💾 GUARDAR TODOS LOS CAMBIOS</button>
+            <button class="btn btn-outline" style="margin-top:0; padding:14px; font-size:14px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="actualizarDesdeNube()">🔄 Actualizar (traer últimos cambios)</button>
             <button class="btn btn-info" style="margin-top:0; padding:16px; font-size:15px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="exportarTodoExcel()">📊 EXPORTAR TODO A EXCEL (.xlsx)</button>
             <div class="menu-card" style="border-color: var(--info);" onclick="nav('page-m1')">
                 <h2 style="color: var(--info);">Módulo 1: Listas y Proveedor</h2>
@@ -533,6 +534,28 @@
         alert("✅ Cambios guardados. Se están sincronizando con la nube.");
     }
 
+    async function actualizarDesdeNube() {
+        if (!firebaseListo || !DOC_REF) return alert("⚠️ No hay conexión con la nube ahora mismo.");
+        try {
+            actualizarIndicador('🔄 Actualizando...', '#f1c40f');
+            let snap = await DOC_REF.get();
+            if (snap.exists && snap.data() && Array.isArray(snap.data().productos)) {
+                db = snap.data();
+                normalizarDB();
+                localStorage.setItem('mjp3_db_cache', JSON.stringify(db));
+                actualizarIndicador('☁️ Sincronizado', '#2ecc71');
+                nav('page-dashboard');
+                alert("✅ Datos actualizados con lo último de la nube.");
+            } else {
+                actualizarIndicador('☁️ Sincronizado', '#2ecc71');
+                alert("No había datos nuevos para traer.");
+            }
+        } catch(e) {
+            actualizarIndicador('⚠️ Sin conexión', '#e67e22');
+            alert("⚠️ No se pudo actualizar: " + e.message);
+        }
+    }
+
     async function iniciarApp() {
         try {
             if (!firebaseListo) throw new Error('Firebase no se pudo inicializar');
@@ -846,6 +869,32 @@
         if (nuevaDesc !== null) { p.descripcion = nuevaDesc; saveDB(); m1_renderMatrizLista(true); alert("✅ Descripción guardada."); }
     }
 
+    // --- FUNCIÓN COMPARTIDA: comparte una imagen directo por WhatsApp (u otra app) usando el selector nativo del celular ---
+    // Si el navegador no lo permite, descarga la imagen como respaldo para adjuntarla a mano.
+    function compartirImagenComoArchivo(canvas, nombreArchivo, textoMensaje) {
+        return new Promise((resolve) => {
+            canvas.toBlob(async (blob) => {
+                if (!blob) { resolve(false); return; }
+                let archivo = new File([blob], nombreArchivo, { type: 'image/png' });
+                if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+                    try {
+                        await navigator.share({ files: [archivo], title: nombreArchivo, text: textoMensaje || '' });
+                        resolve(true);
+                        return;
+                    } catch(e) {
+                        // El usuario canceló el selector, o falló: seguimos con la descarga de respaldo.
+                    }
+                }
+                let link = document.createElement('a');
+                link.download = nombreArchivo;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                alert("📥 Tu navegador no permite compartir directo, así que descargué la imagen. Abrí WhatsApp y adjuntala manualmente.");
+                resolve(false);
+            }, 'image/png');
+        });
+    }
+
     // --- FUNCIÓN PARA GENERAR IMAGEN PARA WHATSAPP ---
     function descargarImagenCatalogo() {
         let catElement = document.getElementById('m1-matriz-container');
@@ -855,13 +904,9 @@
         let oldText = btn.innerText;
         btn.innerText = "⏳ Generando imagen (aguardá un momento)...";
         
-        html2canvas(catElement, { scale: 2, backgroundColor: "#ffffff" }).then(canvas => {
-            let link = document.createElement('a');
-            link.download = `Catalogo_${new Date().getTime()}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
+        html2canvas(catElement, { scale: 2, backgroundColor: "#ffffff" }).then(async canvas => {
+            await compartirImagenComoArchivo(canvas, `Catalogo_${new Date().getTime()}.png`, 'Lista de precios marJav Pro');
             btn.innerText = oldText;
-            alert("✅ ¡Imagen descargada! Ya podés compartirla por WhatsApp.");
         }).catch(err => {
             alert("⚠️ Hubo un error al generar la imagen.");
             btn.innerText = oldText;
@@ -878,7 +923,7 @@
             document.getElementById('m1-editor-panel').style.display = 'none';
             document.getElementById('m1-header-edicion').style.display = 'none';
             document.getElementById('m1-export-actions').innerHTML = `
-                <button class="btn btn-success" id="btn-img-wapp" style="flex-basis: 100%; font-size: 16px; padding: 16px; margin-bottom: 10px;" onclick="descargarImagenCatalogo()">📸 DESCARGAR IMAGEN PARA WHATSAPP</button>
+                <button class="btn btn-success" id="btn-img-wapp" style="flex-basis: 100%; font-size: 16px; padding: 16px; margin-bottom: 10px;" onclick="descargarImagenCatalogo()">📲 ENVIAR POR WHATSAPP</button>
                 <button class="btn btn-danger" style="flex-basis: 100%; font-size: 16px; padding: 16px;" onclick="m1_toggleCatalogo()">❌ SALIR DEL MODO CATÁLOGO</button>
             `;
         } else {
@@ -983,7 +1028,7 @@
             exp.style.display = 'flex';
             
             document.getElementById('m1-export-actions').innerHTML = `
-                <button class="btn btn-success" id="btn-img-wapp" style="flex-basis: 100%; font-size: 16px; padding: 16px; margin-bottom: 10px;" onclick="descargarImagenCatalogo()">📸 DESCARGAR IMAGEN PARA WHATSAPP</button>
+                <button class="btn btn-success" id="btn-img-wapp" style="flex-basis: 100%; font-size: 16px; padding: 16px; margin-bottom: 10px;" onclick="descargarImagenCatalogo()">📲 ENVIAR POR WHATSAPP</button>
                 <button class="btn btn-danger" style="flex-basis: 100%; font-size: 16px; padding: 16px;" onclick="m1_toggleCatalogo()">❌ SALIR DEL MODO CATÁLOGO</button>
             `;
             return;
@@ -1768,7 +1813,7 @@
                 </div>
                 <div class="export-actions">
                     <button class="btn btn-small btn-outline" style="margin-top:0;" onclick="exportarPDF('remito', '${v.id}')">📄 PDF</button>
-                    <button class="btn btn-small btn-outline" style="margin-top:0;" onclick="enviarMail('remito', '${v.id}')">✉️ Wapp/Mail</button>
+                    <button class="btn btn-small btn-success" style="margin-top:0;" onclick="generarImagenRemito('${v.id}')">📲 Enviar por WhatsApp</button>
                 </div>
             </div>`;
         });
@@ -2029,15 +2074,110 @@
                 
             } else if(tipo === 'remito') {
                 let v = db.ventas.find(x => x.id === idRel);
-                let titulo = `Remito #${v.id.slice(-4)} - ${v.cliente}`;
-                let body = `Fecha: ${v.fecha}\n\n`;
-                v.items.forEach(i => body += `▫️ ${i.cant}x ${i.nombre} - $${i.subtotal}\n`);
-                body += `\nTOTAL A PAGAR: $${v.total}`;
-                doc.setFontSize(18); doc.text(titulo, 15, 20); doc.setFontSize(11);
-                let lineas = doc.splitTextToSize(body, 180); doc.text(lineas, 15, 30);
-                doc.save(`${titulo.replace(/\s+/g, '_')}.pdf`);
+
+                doc.setFillColor(44, 62, 80);
+                doc.rect(0, 0, doc.internal.pageSize.getWidth(), 32, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(20);
+                doc.setFont("helvetica", "bold");
+                doc.text("marJav Pro", 15, 15);
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "normal");
+                doc.text(`Remito N° ${v.id.slice(-6)}`, 15, 23);
+                doc.text(`Fecha: ${v.fecha}`, doc.internal.pageSize.getWidth() - 15, 23, { align: "right" });
+
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(11);
+                doc.setFont("helvetica", "bold");
+                doc.text(`Cliente: ${v.cliente}`, 15, 42);
+
+                let bodyData = v.items.map(i => [i.nombre, i.cant.toString(), `$${i.unitario}`, `$${i.subtotal}`]);
+
+                doc.autoTable({
+                    startY: 48,
+                    head: [['Producto', 'Cant.', 'Precio Unit.', 'Subtotal']],
+                    body: bodyData,
+                    theme: 'grid',
+                    styles: { fontSize: 10, cellPadding: 3 },
+                    headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], halign: 'center' },
+                    columnStyles: { 0: { cellWidth: 90 }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center', fontStyle: 'bold' } }
+                });
+
+                let finalY = doc.lastAutoTable.finalY + 8;
+                doc.setFillColor(240, 240, 240);
+                doc.rect(120, finalY, 75, 14, 'F');
+                doc.setFontSize(13);
+                doc.setFont("helvetica", "bold");
+                doc.text(`TOTAL: $${v.total}`, 190, finalY + 9, { align: "right" });
+
+                doc.setFontSize(9);
+                doc.setFont("helvetica", "italic");
+                doc.setTextColor(120, 120, 120);
+                doc.text(`Estado: ${v.estado}  |  Cobro: ${v.pago}`, 15, finalY + 25);
+                doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 12);
+
+                doc.save(`Remito_${v.cliente.replace(/\s+/g, '_')}_${v.id.slice(-6)}.pdf`);
             }
         } catch(e) { alert("⚠️ Error PDF: " + e.message); }
+    }
+
+    // Genera una imagen prolija del remito, ideal para mandar por WhatsApp junto (o en vez) del texto
+    function generarImagenRemito(idRel) {
+        try {
+            let v = db.ventas.find(x => x.id === idRel);
+            if (!v) return;
+
+            let itemsHtml = v.items.map(i => `
+                <tr>
+                    <td style="padding:8px 5px; border-bottom:1px solid #eee; text-align:left; font-size:13px;">${i.nombre}</td>
+                    <td style="padding:8px 5px; border-bottom:1px solid #eee; text-align:center; font-size:13px;">${i.cant}</td>
+                    <td style="padding:8px 5px; border-bottom:1px solid #eee; text-align:right; font-size:13px; font-weight:bold;">$${i.subtotal}</td>
+                </tr>`).join('');
+
+            let temp = document.createElement('div');
+            temp.style.position = 'fixed';
+            temp.style.left = '-9999px';
+            temp.style.width = '420px';
+            temp.style.background = '#ffffff';
+            temp.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+            temp.innerHTML = `
+                <div style="border:1px solid #ddd; border-radius:12px; overflow:hidden;">
+                    <div style="background:linear-gradient(135deg, #2c3e50, #34495e); color:white; padding:20px;">
+                        <div style="font-size:20px; font-weight:900;">marJav Pro</div>
+                        <div style="font-size:12px; opacity:0.85; margin-top:4px;">Remito N° ${v.id.slice(-6)} — ${v.fecha}</div>
+                    </div>
+                    <div style="padding:18px;">
+                        <div style="font-size:14px; color:#555; margin-bottom:10px;"><b>Cliente:</b> ${v.cliente}</div>
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="padding:8px 5px; border-bottom:2px solid #2c3e50; text-align:left; font-size:11px; text-transform:uppercase; color:#2c3e50;">Producto</th>
+                                    <th style="padding:8px 5px; border-bottom:2px solid #2c3e50; text-align:center; font-size:11px; text-transform:uppercase; color:#2c3e50;">Cant.</th>
+                                    <th style="padding:8px 5px; border-bottom:2px solid #2c3e50; text-align:right; font-size:11px; text-transform:uppercase; color:#2c3e50;">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>${itemsHtml}</tbody>
+                        </table>
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:#f4f6f7; border-radius:8px; padding:14px; margin-top:15px;">
+                            <span style="font-size:15px; color:#2c3e50; font-weight:bold;">TOTAL</span>
+                            <span style="font-size:22px; color:#27ae60; font-weight:900;">$${v.total}</span>
+                        </div>
+                        <div style="margin-top:12px; font-size:11px; color:#888;">Estado: ${v.estado} · Cobro: ${v.pago}</div>
+                    </div>
+                    <div style="background:#f8f9fa; border-top:1px solid #eee; padding:14px 18px; text-align:center; font-size:11px; color:#666;">
+                        📞 Javier 1138988346 | Marcela 1157081322
+                    </div>
+                </div>`;
+            document.body.appendChild(temp);
+
+            html2canvas(temp, { scale: 2, backgroundColor: '#ffffff' }).then(async canvas => {
+                await compartirImagenComoArchivo(canvas, `Remito_${v.cliente.replace(/\s+/g, '_')}_${v.id.slice(-6)}.png`, `Remito ${v.cliente} - Total $${v.total}`);
+                document.body.removeChild(temp);
+            }).catch(err => {
+                document.body.removeChild(temp);
+                alert("⚠️ Error generando la imagen: " + err.message);
+            });
+        } catch(e) { alert("⚠️ Error: " + e.message); }
     }
 
     function enviarMail(tipo, idRel) {
