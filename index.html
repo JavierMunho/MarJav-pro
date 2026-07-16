@@ -1275,9 +1275,10 @@
                 </div>
             </div>
 
+            <button class="btn btn-outline" style="margin-top:0; margin-bottom:8px; font-size:12px; padding:10px;" onclick="m2_mostrarCargaInicial('${cid}')">🆕 Cargar / Ajustar Stock (sin venta)</button>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-                <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:150px; font-size:12px; padding:10px;" onclick="m2_mostrarCargaInicial('${cid}')">🆕 Cargar / Ajustar Stock (sin venta)</button>
-                <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:150px; font-size:12px; padding:10px; border-color:var(--info); color:var(--info);" onclick="exportarPDFStockActual('${cid}')">📄 PDF Stock Actual</button>
+                <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:130px; font-size:12px; padding:10px; border-color:var(--primary); color:var(--primary);" onclick="exportarPDFStockActual('${cid}')">📄 PDF Stock Actual</button>
+                <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:130px; font-size:12px; padding:10px; border-color:var(--info); color:var(--info);" onclick="exportarImagenStockActual('${cid}')">📲 WhatsApp</button>
             </div>
             `;
 
@@ -1388,7 +1389,10 @@
                 </div>
                 <label>Pago recibido en el momento ($):</label>
                 <input type="number" id="m2-cobrado-hoy" value="0" style="font-size: 18px; font-weight: bold; color: var(--success);">
-                <button class="btn btn-outline" style="margin-top:10px; border-color:var(--info); color:var(--info);" onclick="exportarPDFConteo('${cid}')">📄 PDF del Conteo</button>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                    <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:130px; border-color:var(--primary); color:var(--primary);" onclick="exportarPDFConteo('${cid}')">📄 PDF del Conteo</button>
+                    <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:130px; border-color:var(--info); color:var(--info);" onclick="exportarImagenConteo('${cid}')">📲 WhatsApp</button>
+                </div>
                 `;
 
         if (pendiente) {
@@ -1667,8 +1671,8 @@
                 </div>
                 
                 <div class="export-actions" style="margin-top:10px;">
-                    <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--primary); color:var(--primary);" onclick="exportarPDFConsignacionFoto('${h.id}')">📄 Ver Planilla PDF</button>
-                    <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--success); color:var(--success);" onclick="enviarMail('consignacion', '${h.id}')">✉️ Wapp/Mail</button>
+                    <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--primary); color:var(--primary);" onclick="exportarPDFConsignacionFoto('${h.id}')">📄 PDF</button>
+                    <button class="btn btn-small btn-success" style="margin-top:0;" onclick="exportarImagenConsignacionHistorial('${h.id}')">📲 WhatsApp</button>
                 </div>
             </div>`;
         });
@@ -1836,9 +1840,15 @@
             if (!db.stock_consignacion[cid]) db.stock_consignacion[cid] = {};
             const { jsPDF } = window.jspdf; const doc = new jsPDF();
 
-            doc.setFontSize(14); doc.text(`Stock Actual en Consignación`, 105, 15, {align: 'center'});
-            doc.setFontSize(11); doc.text(`Local: ${c.nombre}`, 15, 25);
-            doc.setFontSize(9); doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 15, 31);
+            doc.setFillColor(44, 62, 80);
+            doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(18); doc.setFont("helvetica", "bold");
+            doc.text("marJav Pro", 15, 14);
+            doc.setFontSize(10); doc.setFont("helvetica", "normal");
+            doc.text(`Stock Actual — ${c.nombre}`, 15, 22);
+            doc.text(new Date().toLocaleDateString(), doc.internal.pageSize.getWidth() - 15, 22, { align: "right" });
+            doc.setTextColor(0, 0, 0);
 
             let bodyData = [];
             db.familias.forEach(f => {
@@ -1859,9 +1869,12 @@
 
             doc.autoTable({
                 startY: 36, head: [['Producto', 'Precio', 'Stock Actual']], body: bodyData, theme: 'grid',
-                styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+                styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
                 columnStyles: { 0: { cellWidth: 110 }, 1: { halign: 'center' }, 2: { halign: 'center', fontStyle: 'bold' } }
             });
+
+            doc.setFontSize(9); doc.setFont("helvetica", "italic"); doc.setTextColor(120, 120, 120);
+            doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 12);
 
             doc.save(`Stock_${c.nombre.replace(/\s+/g, '_')}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`);
         } catch(e) { alert("⚠️ Error PDF: " + e.message); }
@@ -1908,21 +1921,32 @@
                 }
             });
 
-            if (bodyData.length === 0) return alert("⚠️ Todavía no cargaste ningún conteo para imprimir.");
+            if (bodyData.length === 0) return alert("⚠️ Todavía no cargaste ningún conteo.");
 
-            doc.setFontSize(14); doc.text(`Conteo de Consignación`, 105, 15, {align: 'center'});
-            doc.setFontSize(11); doc.text(`Local: ${c.nombre}`, 15, 25);
-            doc.setFontSize(9); doc.text(`Fecha del conteo: ${fechaConteo}`, 15, 31);
+            doc.setFillColor(44, 62, 80);
+            doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(18); doc.setFont("helvetica", "bold");
+            doc.text("marJav Pro", 15, 14);
+            doc.setFontSize(10); doc.setFont("helvetica", "normal");
+            doc.text(`Conteo de Consignación — ${c.nombre}`, 15, 22);
+            doc.text(fechaConteo, doc.internal.pageSize.getWidth() - 15, 22, { align: "right" });
+            doc.setTextColor(0, 0, 0);
 
             doc.autoTable({
                 startY: 36, head: [['Producto', 'Precio', 'Stock Ant.', 'Contado', 'Vendido', 'Subtotal']], body: bodyData, theme: 'grid',
-                styles: { fontSize: 8.5, cellPadding: 2 }, headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+                styles: { fontSize: 8.5, cellPadding: 2 }, headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
                 columnStyles: { 0: { cellWidth: 75 }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' }, 5: { halign: 'center', fontStyle: 'bold' } }
             });
 
             let finalY = doc.lastAutoTable.finalY + 10;
-            doc.setFontSize(12);
-            doc.text(`Total a Cobrar: $${totalVendido}`, 15, finalY);
+            doc.setFillColor(240, 240, 240);
+            doc.rect(120, finalY, 75, 12, 'F');
+            doc.setFontSize(12); doc.setFont("helvetica", "bold"); doc.setTextColor(192, 57, 43);
+            doc.text(`TOTAL: $${totalVendido}`, 190, finalY + 8, { align: "right" });
+
+            doc.setFontSize(9); doc.setFont("helvetica", "italic"); doc.setTextColor(120, 120, 120);
+            doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 12);
 
             doc.save(`Conteo_${c.nombre.replace(/\s+/g, '_')}_${fechaConteo.replace(/\//g, '-')}.pdf`);
         } catch(e) { alert("⚠️ Error PDF: " + e.message); }
@@ -1933,20 +1957,23 @@
         try {
             let h = db.historial_consignacion.find(x => x.id === historyId);
             let c = db.clientes.find(x => x.id === h.clienteId);
-            
-            // Buscar la fecha de la visita anterior
+
             let visitasCliente = db.historial_consignacion.filter(x => x.clienteId === h.clienteId);
             let currentIndex = visitasCliente.findIndex(x => x.id === historyId);
-            let fechaAnterior = "Inicio";
-            if (currentIndex > 0) {
-                fechaAnterior = visitasCliente[currentIndex - 1].fecha;
-            }
+            let fechaAnterior = currentIndex > 0 ? visitasCliente[currentIndex - 1].fecha : "Inicio";
 
             const { jsPDF } = window.jspdf; const doc = new jsPDF();
-            
-            doc.setFontSize(12); doc.text(`Lista de precios desde ${fechaAnterior} al ${h.fecha}`, 105, 15, {align: 'center'});
-            doc.setFontSize(11); doc.text(`Cliente: ${c.nombre}`, 15, 25); doc.line(30, 26, 100, 26); 
-            
+
+            doc.setFillColor(44, 62, 80);
+            doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(18); doc.setFont("helvetica", "bold");
+            doc.text("marJav Pro", 15, 14);
+            doc.setFontSize(10); doc.setFont("helvetica", "normal");
+            doc.text(`Resumen de Visita — ${c.nombre}`, 15, 22);
+            doc.text(`Desde ${fechaAnterior} al ${h.fecha}`, doc.internal.pageSize.getWidth() - 15, 22, { align: "right" });
+            doc.setTextColor(0, 0, 0);
+
             let bodyData = [];
             db.familias.forEach(f => {
                 let itemsFam = h.planilla.filter(x => x.fam === f);
@@ -1956,11 +1983,8 @@
                         let pFull = db.productos.find(prod => prod.id === i.pid);
                         let nombreDisplay = i.nom;
                         if (pFull && pFull.descripcion && pFull.descripcion.trim() !== "") nombreDisplay += `\n(${pFull.descripcion})`;
-                        
-                        // Si no hay datos ingresados, mostramos un "-" en lugar de un campo vacío
                         let strCont = i.cont === "" ? "-" : i.cont;
                         let strRepo = i.repo === "" ? "-" : i.repo;
-                        
                         bodyData.push([nombreDisplay, `$${i.pV}`, i.ant.toString(), strCont, i.vend.toString(), strRepo, i.fin.toString()]);
                     });
                 }
@@ -1968,19 +1992,252 @@
             bodyData.push([{content: 'Total:', colSpan: 4, styles: {fontStyle: 'bold', halign: 'right'}}, {content: `$${h.vendidoTotal}`, colSpan: 3, styles: {fontStyle: 'bold', textColor: [0,0,200]}}]);
 
             doc.autoTable({
-                startY: 30, head: [['Producto', 'Precio', 'Stock ant', 'Conteo', 'Vendido', 'Reponer', 'Stock']], body: bodyData, theme: 'grid',
-                styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+                startY: 36, head: [['Producto', 'Precio', 'Stock ant', 'Conteo', 'Vendido', 'Reponer', 'Stock']], body: bodyData, theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
                 columnStyles: { 0: { cellWidth: 70 }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' }, 5: { halign: 'center' }, 6: { halign: 'center', fontStyle: 'bold' } }
             });
-            
-            let finalY = doc.lastAutoTable.finalY + 10;
-            doc.setFontSize(10);
-            doc.text(`Contacto Javier Munhó cel 1138988346 Marcela cel 1157081322 alias: javiermix.lemon`, 15, finalY);
-            doc.text(`Precios en efectivo o transferencia.`, 15, finalY + 5);
-            doc.text(`Fecha de Visita: ${h.fecha}`, 150, finalY + 5);
 
-            doc.save(`Planilla_${c.nombre.replace(/\s+/g, '_')}_${h.fecha.replace(/\//g, '-')}.pdf`);
+            let finalY = doc.lastAutoTable.finalY + 10;
+            doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.setTextColor(0, 0, 0);
+            doc.text(`Cobrado: $${h.cobrado}  |  Deuda sumada: $${h.debeGenerado}  |  Saldo actual: $${c.deuda}`, 15, finalY);
+
+            doc.setFontSize(9); doc.setFont("helvetica", "italic"); doc.setTextColor(120, 120, 120);
+            doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 12);
+
+            doc.save(`Visita_${c.nombre.replace(/\s+/g, '_')}_${h.fecha.replace(/\//g, '-')}.pdf`);
         } catch(e) { alert("⚠️ Error PDF: " + e.message); }
+    }
+
+    function exportarImagenStockActual(cid) {
+        try {
+            let c = db.clientes.find(x => x.id === cid);
+            if (!db.stock_consignacion[cid]) db.stock_consignacion[cid] = {};
+
+            let filasHtml = "";
+            db.familias.forEach(f => {
+                let prods = db.productos.filter(p => p.familia === f);
+                let itemsFam = "";
+                prods.forEach(p => {
+                    let stockObj = db.stock_consignacion[cid][p.id] || {cant: 0, pV: 0};
+                    if (stockObj.cant <= 0) return;
+                    itemsFam += `<tr>
+                        <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:left; font-size:13px;">${p.nombre}</td>
+                        <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:center; font-size:13px;">$${stockObj.pV || 0}</td>
+                        <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:center; font-size:13px; font-weight:bold;">${stockObj.cant}</td>
+                    </tr>`;
+                });
+                if (itemsFam !== "") {
+                    filasHtml += `<tr><td colspan="3" style="background:#e8f4f8; padding:6px; font-size:11px; font-weight:bold; color:#2980b9; text-transform:uppercase;">${f}</td></tr>` + itemsFam;
+                }
+            });
+
+            if (filasHtml === "") return alert("⚠️ Este local todavía no tiene stock cargado.");
+
+            let temp = document.createElement('div');
+            temp.style.position = 'fixed'; temp.style.left = '-9999px'; temp.style.width = '420px';
+            temp.style.background = '#ffffff';
+            temp.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+            temp.innerHTML = `
+                <div style="border:1px solid #ddd; border-radius:12px; overflow:hidden;">
+                    <div style="background:linear-gradient(135deg, #2c3e50, #34495e); color:white; padding:20px;">
+                        <div style="font-size:19px; font-weight:900;">📦 marJav Pro</div>
+                        <div style="font-size:12px; opacity:0.85; margin-top:4px;">Stock Actual — ${c.nombre}</div>
+                        <div style="font-size:11px; opacity:0.7; margin-top:2px;">${new Date().toLocaleDateString()}</div>
+                    </div>
+                    <div style="padding:15px;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="padding:7px 5px; border-bottom:2px solid #2c3e50; text-align:left; font-size:11px; text-transform:uppercase; color:#2c3e50;">Producto</th>
+                                    <th style="padding:7px 5px; border-bottom:2px solid #2c3e50; text-align:center; font-size:11px; text-transform:uppercase; color:#2c3e50;">Precio</th>
+                                    <th style="padding:7px 5px; border-bottom:2px solid #2c3e50; text-align:center; font-size:11px; text-transform:uppercase; color:#2c3e50;">Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody>${filasHtml}</tbody>
+                        </table>
+                    </div>
+                    <div style="background:#f8f9fa; border-top:1px solid #eee; padding:12px 15px; text-align:center; font-size:11px; color:#666;">
+                        📞 Javier 1138988346 | Marcela 1157081322
+                    </div>
+                </div>`;
+            document.body.appendChild(temp);
+
+            html2canvas(temp, { scale: 2, backgroundColor: '#ffffff' }).then(async canvas => {
+                await compartirImagenComoArchivo(canvas, `Stock_${c.nombre.replace(/\s+/g, '_')}_${new Date().toLocaleDateString().replace(/\//g, '-')}.png`, `Stock actual - ${c.nombre}`);
+                document.body.removeChild(temp);
+            }).catch(err => {
+                document.body.removeChild(temp);
+                alert("⚠️ Error generando la imagen: " + err.message);
+            });
+        } catch(e) { alert("⚠️ Error: " + e.message); }
+    }
+
+    function exportarImagenConteo(cid) {
+        try {
+            let c = db.clientes.find(x => x.id === cid);
+            let pendiente = db.conteos_pendientes ? db.conteos_pendientes[cid] : null;
+            let totalVendido = 0;
+            let fechaConteo = pendiente ? pendiente.fecha : new Date().toLocaleDateString();
+
+            let filasHtml = "";
+            db.familias.forEach(f => {
+                let prods = db.productos.filter(p => p.familia === f);
+                let itemsFam = "";
+                prods.forEach(p => {
+                    let ant, cont, vend, pCobro;
+                    if (pendiente && pendiente.items[p.id]) {
+                        ant = pendiente.items[p.id].ant;
+                        cont = pendiente.items[p.id].cont;
+                        vend = pendiente.items[p.id].vend;
+                        pCobro = pendiente.items[p.id].pCobro;
+                    } else {
+                        let contEl = document.getElementById(`m2-cont-${p.id}`);
+                        if (!contEl || contEl.value === "") return;
+                        let stockObj = (db.stock_consignacion[cid] && db.stock_consignacion[cid][p.id]) || { cant: 0, pV: 0 };
+                        ant = stockObj.cant;
+                        cont = parseInt(contEl.value);
+                        vend = ant - cont;
+                        if (vend < 0) vend = 0;
+                        let pCobroEl = document.getElementById(`m2-pcobro-${p.id}`);
+                        pCobro = pCobroEl ? parseInt(pCobroEl.value) : 0;
+                    }
+                    if (ant === 0 && cont === 0) return;
+                    if (vend > 0) totalVendido += vend * pCobro;
+                    itemsFam += `<tr>
+                        <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:left; font-size:12px;">${p.nombre}</td>
+                        <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:center; font-size:12px;">${ant}</td>
+                        <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:center; font-size:12px;">${cont}</td>
+                        <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:center; font-size:12px; font-weight:bold; color:#c0392b;">${vend}</td>
+                        <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:right; font-size:12px; font-weight:bold;">${vend > 0 ? '$' + (vend * pCobro) : '-'}</td>
+                    </tr>`;
+                });
+                if (itemsFam !== "") {
+                    filasHtml += `<tr><td colspan="5" style="background:#e8f4f8; padding:6px; font-size:11px; font-weight:bold; color:#2980b9; text-transform:uppercase;">${f}</td></tr>` + itemsFam;
+                }
+            });
+
+            if (filasHtml === "") return alert("⚠️ Todavía no cargaste ningún conteo.");
+
+            let temp = document.createElement('div');
+            temp.style.position = 'fixed'; temp.style.left = '-9999px'; temp.style.width = '460px';
+            temp.style.background = '#ffffff';
+            temp.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+            temp.innerHTML = `
+                <div style="border:1px solid #ddd; border-radius:12px; overflow:hidden;">
+                    <div style="background:linear-gradient(135deg, #2c3e50, #34495e); color:white; padding:20px;">
+                        <div style="font-size:19px; font-weight:900;">🧮 marJav Pro</div>
+                        <div style="font-size:12px; opacity:0.85; margin-top:4px;">Conteo de Consignación — ${c.nombre}</div>
+                        <div style="font-size:11px; opacity:0.7; margin-top:2px;">${fechaConteo}</div>
+                    </div>
+                    <div style="padding:15px;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="padding:7px 5px; border-bottom:2px solid #2c3e50; text-align:left; font-size:10px; text-transform:uppercase; color:#2c3e50;">Producto</th>
+                                    <th style="padding:7px 5px; border-bottom:2px solid #2c3e50; text-align:center; font-size:10px; text-transform:uppercase; color:#2c3e50;">Ant.</th>
+                                    <th style="padding:7px 5px; border-bottom:2px solid #2c3e50; text-align:center; font-size:10px; text-transform:uppercase; color:#2c3e50;">Cont.</th>
+                                    <th style="padding:7px 5px; border-bottom:2px solid #2c3e50; text-align:center; font-size:10px; text-transform:uppercase; color:#2c3e50;">Vend.</th>
+                                    <th style="padding:7px 5px; border-bottom:2px solid #2c3e50; text-align:right; font-size:10px; text-transform:uppercase; color:#2c3e50;">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>${filasHtml}</tbody>
+                        </table>
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:#f4f6f7; border-radius:8px; padding:14px; margin-top:15px;">
+                            <span style="font-size:15px; color:#2c3e50; font-weight:bold;">TOTAL A COBRAR</span>
+                            <span style="font-size:22px; color:#c0392b; font-weight:900;">$${totalVendido}</span>
+                        </div>
+                    </div>
+                    <div style="background:#f8f9fa; border-top:1px solid #eee; padding:12px 15px; text-align:center; font-size:11px; color:#666;">
+                        📞 Javier 1138988346 | Marcela 1157081322
+                    </div>
+                </div>`;
+            document.body.appendChild(temp);
+
+            html2canvas(temp, { scale: 2, backgroundColor: '#ffffff' }).then(async canvas => {
+                await compartirImagenComoArchivo(canvas, `Conteo_${c.nombre.replace(/\s+/g, '_')}_${fechaConteo.replace(/\//g, '-')}.png`, `Conteo ${c.nombre} - Total a cobrar $${totalVendido}`);
+                document.body.removeChild(temp);
+            }).catch(err => {
+                document.body.removeChild(temp);
+                alert("⚠️ Error generando la imagen: " + err.message);
+            });
+        } catch(e) { alert("⚠️ Error: " + e.message); }
+    }
+
+    function exportarImagenConsignacionHistorial(historyId) {
+        try {
+            let h = db.historial_consignacion.find(x => x.id === historyId);
+            let c = db.clientes.find(x => x.id === h.clienteId);
+
+            let visitasCliente = db.historial_consignacion.filter(x => x.clienteId === h.clienteId);
+            let currentIndex = visitasCliente.findIndex(x => x.id === historyId);
+            let fechaAnterior = currentIndex > 0 ? visitasCliente[currentIndex - 1].fecha : "Inicio";
+
+            let filasHtml = "";
+            db.familias.forEach(f => {
+                let itemsFam = h.planilla.filter(x => x.fam === f);
+                if (itemsFam.length === 0) return;
+                let filasFam = "";
+                itemsFam.forEach(i => {
+                    let strCont = i.cont === "" ? "-" : i.cont;
+                    let strRepo = i.repo === "" ? "-" : i.repo;
+                    filasFam += `<tr>
+                        <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:left; font-size:11px;">${i.nom}</td>
+                        <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px;">${i.ant}</td>
+                        <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px;">${strCont}</td>
+                        <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px; font-weight:bold; color:#c0392b;">${i.vend}</td>
+                        <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px;">${strRepo}</td>
+                        <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px; font-weight:bold; color:#27ae60;">${i.fin}</td>
+                    </tr>`;
+                });
+                filasHtml += `<tr><td colspan="6" style="background:#e8f4f8; padding:6px; font-size:10px; font-weight:bold; color:#2980b9; text-transform:uppercase;">${f}</td></tr>` + filasFam;
+            });
+
+            let temp = document.createElement('div');
+            temp.style.position = 'fixed'; temp.style.left = '-9999px'; temp.style.width = '460px';
+            temp.style.background = '#ffffff';
+            temp.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+            temp.innerHTML = `
+                <div style="border:1px solid #ddd; border-radius:12px; overflow:hidden;">
+                    <div style="background:linear-gradient(135deg, #2c3e50, #34495e); color:white; padding:20px;">
+                        <div style="font-size:19px; font-weight:900;">📋 marJav Pro</div>
+                        <div style="font-size:12px; opacity:0.85; margin-top:4px;">Resumen de Visita — ${c.nombre}</div>
+                        <div style="font-size:11px; opacity:0.7; margin-top:2px;">Desde ${fechaAnterior} al ${h.fecha}</div>
+                    </div>
+                    <div style="padding:15px;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:left; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Producto</th>
+                                    <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Ant.</th>
+                                    <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Cont.</th>
+                                    <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Vend.</th>
+                                    <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Repo.</th>
+                                    <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody>${filasHtml}</tbody>
+                        </table>
+                        <div style="background:#f4f6f7; border-radius:8px; padding:14px; margin-top:15px; font-size:13px; color:#333;">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Vendido:</span><b>$${h.vendidoTotal}</b></div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Cobrado:</span><b style="color:#27ae60;">$${h.cobrado}</b></div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Deuda sumada:</span><b style="color:#c0392b;">$${h.debeGenerado}</b></div>
+                            <div style="display:flex; justify-content:space-between; border-top:1px solid #ddd; padding-top:8px; margin-top:4px;"><span style="font-weight:bold;">Saldo Total Actual:</span><b style="font-size:16px; color:#2c3e50;">$${c.deuda}</b></div>
+                        </div>
+                    </div>
+                    <div style="background:#f8f9fa; border-top:1px solid #eee; padding:12px 15px; text-align:center; font-size:11px; color:#666;">
+                        📞 Javier 1138988346 | Marcela 1157081322
+                    </div>
+                </div>`;
+            document.body.appendChild(temp);
+
+            html2canvas(temp, { scale: 2, backgroundColor: '#ffffff' }).then(async canvas => {
+                await compartirImagenComoArchivo(canvas, `Visita_${c.nombre.replace(/\s+/g, '_')}_${h.fecha.replace(/\//g, '-')}.png`, `Resumen visita ${c.nombre} - ${h.fecha}`);
+                document.body.removeChild(temp);
+            }).catch(err => {
+                document.body.removeChild(temp);
+                alert("⚠️ Error generando la imagen: " + err.message);
+            });
+        } catch(e) { alert("⚠️ Error: " + e.message); }
     }
 
     function exportarPDF(tipo, idRel) {
