@@ -1,9 +1,10 @@
 // Service Worker de marJav Pro
-// v2: el HTML principal se pide siempre a internet primero (para que los
-// arreglos lleguen al toque), y solo se usa la copia guardada si no hay señal.
+// v3: el HTML y los .js de la app se piden siempre a internet primero (para que
+// los arreglos y módulos nuevos lleguen al toque), y solo se usa la copia
+// guardada si no hay señal.
 // Los DATOS (productos, clientes, ventas, etc.) NO se cachean acá: viven en Firestore.
 
-const CACHE_NAME = 'marjavpro-v2';
+const CACHE_NAME = 'marjavpro-v3';
 const ARCHIVOS_CACHE = [
     './manifest.json',
     './icon-192.png',
@@ -36,12 +37,13 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    let esPaginaPrincipal = event.request.mode === 'navigate' ||
+    let esCodigoDeLaApp = event.request.mode === 'navigate' ||
         event.request.url.endsWith('index.html') ||
-        event.request.url.endsWith('/');
+        event.request.url.endsWith('/') ||
+        event.request.url.endsWith('.js');
 
-    if (esPaginaPrincipal) {
-        // RED PRIMERO: así los arreglos nuevos llegan enseguida.
+    if (esCodigoDeLaApp) {
+        // RED PRIMERO: así los arreglos y módulos nuevos llegan enseguida.
         // Si no hay internet, recién ahí se usa la última copia guardada.
         event.respondWith(
             fetch(event.request).then((respuestaRed) => {
