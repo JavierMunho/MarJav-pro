@@ -149,6 +149,10 @@
                 <h2 style="color: var(--accent);">Módulo 3: Ventas</h2>
                 <p>Armado de pedidos y remitos directos</p>
             </div>
+            <div class="menu-card" style="border-color: #8e44ad;" onclick="nav('page-m4')">
+                <h2 style="color: #8e44ad;">Módulo 4: Finanzas</h2>
+                <p>Gastos, ingresos automáticos y balance del negocio</p>
+            </div>
         </div>
     </div>
 
@@ -313,7 +317,56 @@
         </div>
     </div>
 
+    <!-- MÓDULO 4: FINANZAS -->
+    <div id="page-m4" class="page">
+        <div class="top-bar">
+            <div class="top-bar-left">
+                <button class="btn-back" onclick="nav('page-dashboard')">← Inicio</button><h2>💰 M4: Finanzas</h2>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3 class="section-title">1. Resumen Financiero</h3>
+            <div class="grid-2" id="m4-mes-selector-wrap" style="margin-bottom: 5px;">
+                <div><label>Desde:</label><input type="date" id="m4-fecha-desde" onchange="m4_renderResumen()"></div>
+                <div><label>Hasta:</label><input type="date" id="m4-fecha-hasta" onchange="m4_renderResumen()"></div>
+            </div>
+            <div id="m4-resumen-container" style="margin-top: 15px;"></div>
+        </div>
+
+        <div class="section" style="background:#fff3cd; border-color:#ffe69c;">
+            <h3 class="section-title" style="color:#856404; border-bottom-color:#ffe69c;">2. Registrar Gasto</h3>
+            <div class="grid-2">
+                <div><label>Fecha:</label><input type="date" id="m4-gasto-fecha"></div>
+                <div><label>Monto ($):</label><input type="number" id="m4-gasto-monto" placeholder="0.00"></div>
+            </div>
+            <label>Descripción:</label>
+            <input type="text" id="m4-gasto-desc" placeholder="Ej: Alquiler del depósito, Combustible, Sueldos...">
+            <label>Categoría (opcional):</label>
+            <select id="m4-gasto-categoria">
+                <option value="General">General</option>
+                <option value="Alquiler">Alquiler</option>
+                <option value="Sueldos">Sueldos</option>
+                <option value="Transporte">Transporte</option>
+                <option value="Insumos">Insumos / Mercadería</option>
+                <option value="Servicios">Servicios (luz, agua, internet)</option>
+                <option value="Impuestos">Impuestos</option>
+                <option value="Otro">Otro</option>
+            </select>
+            <button class="btn btn-accent" style="background:#e67e22;" onclick="m4_registrarGasto()">💾 Guardar Gasto</button>
+        </div>
+
+        <div class="section" style="background: transparent; border: none; padding: 0; box-shadow: none;">
+            <div style="background: #fff; padding: 15px; border-radius: 12px; border: 1px solid #eee;">
+                <h3 class="section-title">3. Listado de Gastos</h3>
+                <div id="m4-gastos-container"></div>
+            </div>
+        </div>
+    </div>
+
 </div>
+
+<script src="modulo4-gastos.js"></script>
 
 <script>
     // ==========================================
@@ -445,7 +498,7 @@
         return {
             productos: [], familias: [], listas: [], clientes: [],
             stock_consignacion: {}, historial_consignacion: [], ventas: [],
-            precios_manuales: {}, pres_manuales: {}, conteos_pendientes: {}
+            precios_manuales: {}, pres_manuales: {}, conteos_pendientes: {}, gastos: []
         };
     }
 
@@ -462,7 +515,7 @@
             ventas: JSON.parse(localStorage.getItem('mjp3_ventas')) || [],
             precios_manuales: JSON.parse(localStorage.getItem('mjp3_precios_manuales')) || {},
             pres_manuales: JSON.parse(localStorage.getItem('mjp3_pres_manuales')) || {},
-            conteos_pendientes: {}
+            conteos_pendientes: {}, gastos: []
         };
     }
 
@@ -495,7 +548,7 @@
         });
         db.clientes.forEach(c => { if(!c.ocultos) c.ocultos = []; });
         if (!db.conteos_pendientes) db.conteos_pendientes = {};
-        if(!db.conteos_pendientes) db.conteos_pendientes = {};
+        if (!db.gastos) db.gastos = [];
 
         for (let cId in db.stock_consignacion) {
             for (let pId in db.stock_consignacion[cId]) {
@@ -687,6 +740,13 @@
             let hojaVentas = XLSX.utils.json_to_sheet(filasVentas);
             XLSX.utils.book_append_sheet(wb, hojaVentas, 'Ventas');
 
+            // Hoja 6: Gastos
+            let filasGastos = (db.gastos || []).map(g => ({
+                Fecha: g.fecha, Descripcion: g.descripcion, Categoria: g.categoria || 'General', 'Monto ($)': g.monto
+            }));
+            let hojaGastos = XLSX.utils.json_to_sheet(filasGastos);
+            XLSX.utils.book_append_sheet(wb, hojaGastos, 'Gastos');
+
             let fechaArchivo = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
             XLSX.writeFile(wb, `marJavPro_Datos_${fechaArchivo}.xlsx`);
         } catch(e) {
@@ -706,6 +766,7 @@
         }
         if(pageId === 'page-m2') initM2();
         if(pageId === 'page-m3') initM3();
+        if(pageId === 'page-m4') initM4();
     }
 
     function redondear(precio) {
