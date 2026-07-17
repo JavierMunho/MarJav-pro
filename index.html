@@ -262,6 +262,7 @@
             <h3 class="section-title">3. Historial de Visitas</h3>
             <label>Ver historial de:</label>
             <select id="m2-historial-cliente" onchange="m2_renderHistorial()"></select>
+            <button class="btn btn-success" style="margin-top:10px;" onclick="m2_registrarPago(document.getElementById('m2-historial-cliente').value)">💰 Registrar Pago</button>
             <div id="m2-historial-container" style="margin-top:15px;"></div>
         </div>
     </div>
@@ -658,14 +659,21 @@
             let hojaClientes = XLSX.utils.json_to_sheet(filasClientes);
             XLSX.utils.book_append_sheet(wb, hojaClientes, 'Locales Consignacion');
 
-            // Hoja 4: Historial de visitas de consignación
+            // Hoja 4: Historial de visitas y pagos de consignación
             let filasHistorial = [];
             db.historial_consignacion.forEach(h => {
                 let cli = db.clientes.find(x => x.id === h.clienteId);
-                filasHistorial.push({
-                    Fecha: h.fecha, Local: cli ? cli.nombre : '(borrado)',
-                    'Vendido Total ($)': h.vendidoTotal, 'Cobrado ($)': h.cobrado, 'Deuda Sumada ($)': h.debeGenerado
-                });
+                if (h.tipo === 'pago') {
+                    filasHistorial.push({
+                        Fecha: h.fecha, Local: cli ? cli.nombre : '(borrado)', Tipo: 'Pago',
+                        'Vendido Total ($)': '', 'Cobrado ($)': h.monto, 'Deuda Sumada ($)': -h.monto
+                    });
+                } else {
+                    filasHistorial.push({
+                        Fecha: h.fecha, Local: cli ? cli.nombre : '(borrado)', Tipo: 'Visita',
+                        'Vendido Total ($)': h.vendidoTotal, 'Cobrado ($)': h.cobrado, 'Deuda Sumada ($)': h.debeGenerado
+                    });
+                }
             });
             let hojaHistorial = XLSX.utils.json_to_sheet(filasHistorial);
             XLSX.utils.book_append_sheet(wb, hojaHistorial, 'Historial Consignacion');
@@ -896,19 +904,132 @@
     }
 
     // --- FUNCIÓN PARA GENERAR IMAGEN PARA WHATSAPP ---
+    // Comparte varias imágenes juntas de una (una foto por categoría) usando el selector nativo.
+    // Si el navegador no permite compartir varios archivos a la vez, las descarga una por una.
+    async function compartirImagenesMultiples(archivos, textoMensaje) {
+        try {
+            let files = [];
+            for (let a of archivos) {
+                let blob = await new Promise(resolve => a.canvas.toBlob(resolve, 'image/png'));
+                if (blob) files.push(new File([blob], a.nombre, { type: 'image/png' }));
+            }
+            if (files.length === 0) return alert("⚠️ No se pudo generar ninguna imagen.");
+
+            if (navigator.canShare && navigator.canShare({ files: files })) {
+                try {
+                    await navigator.share({ files: files, title: textoMensaje, text: textoMensaje });
+                    return;
+                } catch(e) {
+                    // El usuario canceló, o el navegador no pudo compartirlas juntas: seguimos con la descarga.
+                }
+            }
+            files.forEach((f, i) => {
+                setTimeout(() => {
+                    let link = document.createElement('a');
+                    link.download = f.name;
+                    link.href = URL.createObjectURL(f);
+                    link.click();
+                }, i * 400);
+            });
+            alert(`📥 Tu navegador no permite compartir varias imágenes juntas, así que descargué las ${files.length} por separado. Adjuntalas todas desde tu galería en el mismo mensaje de WhatsApp.`);
+        } catch(e) {
+            alert("⚠️ Error al compartir: " + e.message);
+        }
+    }
+
+    // Genera UNA IMAGEN POR CATEGORÍA (en vez de una sola imagen gigante con todo apilado),
+    // así cada una queda corta y con letra grande, legible al verla en WhatsApp.
     function descargarImagenCatalogo() {
-        let catElement = document.getElementById('m1-matriz-container');
-        if(!catElement) return;
-        
+        let listId = document.getElementById('m1-lista-select').value;
+        if (!listId) return alert("Seleccioná una lista primero.");
+        let isProveedor = (listId === 'proveedor');
+        let lista = isProveedor ? { nombre: 'Lista Proveedor', columnas: ['Costo Base'], margen: 0, ocultos: [], celdasOcultas: [] } : db.listas.find(x => x.id === listId);
+        if (!lista) return;
+
         let btn = document.getElementById('btn-img-wapp');
         let oldText = btn.innerText;
-        btn.innerText = "⏳ Generando imagen (aguardá un momento)...";
-        
-        html2canvas(catElement, { scale: 2, backgroundColor: "#ffffff" }).then(async canvas => {
-            await compartirImagenComoArchivo(canvas, `Catalogo_${new Date().getTime()}.png`, 'Lista de precios marJav Pro');
+        btn.innerText = "⏳ Generando imágenes (aguardá un momento)...";
+
+        let fechaHoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+        let bloques = [];
+        db.familias.forEach(f => {
+            let prods = db.productos.filter(p => p.familia === f);
+            let filasHtml = ""; let count = 0;
+            prods.forEach(p => {
+                let estaOculto = !isProveedor && lista.ocultos && lista.ocultos.includes(p.id);
+                if (estaOculto) return;
+                count++;
+                filasHtml += `<tr>
+                    <td style="text-align:left; border-bottom:1px solid #f0f0f0; padding:12px 6px; max-width:220px;">
+                        <b style="color:#2c3e50; font-size:16px;">${p.nombre}</b>
+                        ${p.descripcion ? `<br><span style="font-size:12px; color:#888;"><i>${p.descripcion}</i></span>` : ''}
+                    </td>`;
+                if (isProveedor) {
+                    filasHtml += `<td style="border-bottom:1px solid #f0f0f0; text-align:center;"><b style="color:#2980b9; font-size:17px;">$${p.costo}</b></td>`;
+                } else {
+                    lista.columnas.forEach(c => {
+                        let keyCelda = `${p.id}_${c}`;
+                        let celdaOculta = lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda);
+                        if (celdaOculta || ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad'))) {
+                            filasHtml += `<td style="border-bottom:1px solid #f0f0f0; color:#ccc; text-align:center;">-</td>`;
+                        } else {
+                            let colName = (lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c;
+                            let keyPres = `${lista.id}_${p.id}_${c}`;
+                            let nombrePres = db.pres_manuales[keyPres] || colName;
+                            let precioData = obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen);
+                            filasHtml += `<td style="border-bottom:1px solid #f0f0f0; text-align:center; padding:6px;">
+                                <div style="font-size:12px; color:#e67e22; font-weight:bold; margin-bottom:3px; text-transform:uppercase;">${nombrePres}</div>
+                                <div style="font-size:18px; font-weight:900; color:#2c3e50;">$${precioData.final}</div>
+                            </td>`;
+                        }
+                    });
+                }
+                filasHtml += `</tr>`;
+            });
+            if (count > 0) bloques.push({ familia: f, filasHtml: filasHtml });
+        });
+
+        if (bloques.length === 0) {
+            btn.innerText = oldText;
+            return alert("⚠️ No hay productos visibles para exportar.");
+        }
+
+        let nombreLista = isProveedor ? 'Lista Proveedor' : lista.nombre;
+
+        let generarSiguiente = async (index, archivos) => {
+            if (index >= bloques.length) return archivos;
+            let b = bloques[index];
+            let temp = document.createElement('div');
+            temp.style.position = 'fixed'; temp.style.left = '-9999px'; temp.style.width = '480px';
+            temp.style.background = '#ffffff';
+            temp.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+            temp.innerHTML = `
+                <div style="border-radius:12px; overflow:hidden; border:1px solid #ddd;">
+                    <div style="background:linear-gradient(135deg, #2c3e50, #34495e); color:white; padding:20px;">
+                        <div style="font-size:20px; font-weight:900; text-transform:uppercase;">${nombreLista}</div>
+                        <div style="font-size:13px; opacity:0.85; margin-top:4px;">📅 ${fechaHoy}</div>
+                    </div>
+                    <div style="background:#e67e22; color:white; padding:10px 15px; font-weight:bold; font-size:15px; text-transform:uppercase; letter-spacing:0.5px;">${b.familia}</div>
+                    <div style="padding:5px 12px;">
+                        <table style="width:100%; border-collapse:collapse;"><tbody>${b.filasHtml}</tbody></table>
+                    </div>
+                    <div style="background:#f8f9fa; border-top:1px solid #eee; padding:14px 15px; text-align:center; font-size:12px; color:#555;">
+                        📞 Javier 1138988346 | Marcela 1157081322
+                    </div>
+                </div>`;
+            document.body.appendChild(temp);
+            let canvas = await html2canvas(temp, { scale: 2, backgroundColor: '#ffffff' });
+            document.body.removeChild(temp);
+            archivos.push({ canvas: canvas, nombre: `${nombreLista.replace(/\s+/g, '_')}_${b.familia.replace(/\s+/g, '_')}.png` });
+            return generarSiguiente(index + 1, archivos);
+        };
+
+        generarSiguiente(0, []).then(async (archivos) => {
+            await compartirImagenesMultiples(archivos, `${nombreLista} - marJav Pro`);
             btn.innerText = oldText;
         }).catch(err => {
-            alert("⚠️ Hubo un error al generar la imagen.");
+            alert("⚠️ Hubo un error al generar las imágenes: " + err.message);
             btn.innerText = oldText;
         });
     }
@@ -1231,6 +1352,39 @@
         window.open(`https://wa.me/${telLimpio}`, '_blank');
     }
 
+    // Registra un pago recibido en cualquier momento, aunque el ciclo de conteo/reposición
+    // ya esté cerrado. Descuenta la deuda y queda como un evento propio en el historial,
+    // así el historial refleja el ciclo completo (venta + reposición + pagos posteriores).
+    function m2_registrarPago(cid) {
+        if (!cid) return alert("⚠️ Elegí primero un local.");
+        let c = db.clientes.find(x => x.id === cid);
+        if (!c) return;
+
+        let montoStr = prompt(`Registrar pago de ${c.nombre}\nDeuda actual: $${c.deuda}\n\nMonto recibido:`, "");
+        if (montoStr === null) return;
+        let monto = parseFloat(montoStr);
+        if (isNaN(monto) || monto <= 0) return alert("⚠️ Ingresá un monto válido.");
+
+        let deudaAnterior = c.deuda;
+        c.deuda -= monto;
+
+        db.historial_consignacion.push({
+            id: Date.now().toString(),
+            clienteId: cid,
+            fecha: new Date().toLocaleDateString(),
+            tipo: 'pago',
+            monto: monto,
+            deudaAnterior: deudaAnterior,
+            deudaNueva: c.deuda
+        });
+
+        saveDB();
+        alert(`✅ Pago registrado. Nueva deuda de ${c.nombre}: $${c.deuda}`);
+
+        if (document.getElementById('m2-historial-cliente').value === cid) m2_renderHistorial();
+        if (document.getElementById('m2-cliente-select').value === cid) m2_abrirPlanillaMaestra();
+    }
+
     function m2_toggleVisibilidadLocal(cid, pid) {
         let c = db.clientes.find(x => x.id === cid);
         if(!c) return;
@@ -1269,9 +1423,10 @@
                     📞 ${c.telefono && c.telefono.trim() !== "" ? c.telefono : '<i>Sin teléfono</i>'}
                     ${c.domicilio && c.domicilio.trim() !== "" ? ' | 📍 ' + c.domicilio : ''}
                 </div>
-                <div style="display:flex; gap:8px;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
                     <button onclick="m2_abrirWhatsapp('${cid}')" style="background:#25D366; color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">💬 WhatsApp</button>
                     <button onclick="m2_editarCliente('${cid}')" style="background:var(--info); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">✏️ Editar datos</button>
+                    <button onclick="m2_registrarPago('${cid}')" style="background:var(--success); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">💰 Registrar Pago</button>
                 </div>
             </div>
 
@@ -1427,6 +1582,7 @@
             </div>
             <div style="font-size:11px; color:#555; margin-bottom:10px; background:#e8f4f8; padding:8px; border-radius:6px;">
                 Cargá la cantidad que dejás de cada producto. Esto <b>no</b> genera venta ni cobro — solo fija el stock actual en el local. Dejá vacío lo que no quieras tocar.
+                ${listaCons ? `<br><i>Mostrando solo los productos habilitados en la lista "${listaCons.nombre}".</i>` : ''}
             </div>
             <button class="btn btn-outline" style="margin-top:0; margin-bottom:10px; font-size:12px; padding:8px;" onclick="m2_abrirPlanillaMaestra()">← Volver a Planilla de Visita</button>
             <div class="table-responsive">
@@ -1438,6 +1594,9 @@
             let prods = db.productos.filter(p => p.familia === f);
             let innerHtml = ""; let renderCount = 0;
             prods.forEach(p => {
+                // Solo mostramos productos habilitados en la lista de Consignación (si existe una)
+                if (listaCons && listaCons.ocultos && listaCons.ocultos.includes(p.id)) return;
+
                 let stockObj = db.stock_consignacion[cid][p.id] || {cant: 0, pV: 0};
                 renderCount++;
                 innerHtml += `<tr>
@@ -1658,23 +1817,36 @@
         
         let html = "";
         hist.forEach(h => {
-            html += `
-            <div class="card-item" style="border-left-color: var(--primary);">
-                <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
-                    <b style="color:var(--primary);">📅 Visita ${h.fecha}</b>
-                </div>
-                
-                <div style="background:#f8f9fa; padding:8px; border-radius:6px; font-size:12px; margin-top:8px; display:flex; justify-content:space-between;">
-                    <span style="color:var(--info);">Vendido: <b>$${h.vendidoTotal}</b></span>
-                    <span style="color:var(--success);">Cobró: <b>$${h.cobrado}</b></span>
-                    <span style="color:var(--danger);">Deuda Sumada: <b>$${h.debeGenerado}</b></span>
-                </div>
-                
-                <div class="export-actions" style="margin-top:10px;">
-                    <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--primary); color:var(--primary);" onclick="exportarPDFConsignacionFoto('${h.id}')">📄 PDF</button>
-                    <button class="btn btn-small btn-success" style="margin-top:0;" onclick="exportarImagenConsignacionHistorial('${h.id}')">📲 WhatsApp</button>
-                </div>
-            </div>`;
+            if (h.tipo === 'pago') {
+                html += `
+                <div class="card-item" style="border-left-color: var(--success);">
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                        <b style="color:var(--success);">💰 Pago recibido — ${h.fecha}</b>
+                    </div>
+                    <div style="background:#f8f9fa; padding:8px; border-radius:6px; font-size:12px; margin-top:8px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+                        <span style="color:var(--success);">Pagó: <b>$${h.monto}</b></span>
+                        <span style="color:#666;">Deuda: $${h.deudaAnterior} → <b>$${h.deudaNueva}</b></span>
+                    </div>
+                </div>`;
+            } else {
+                html += `
+                <div class="card-item" style="border-left-color: var(--primary);">
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                        <b style="color:var(--primary);">📅 Visita ${h.fecha}</b>
+                    </div>
+                    
+                    <div style="background:#f8f9fa; padding:8px; border-radius:6px; font-size:12px; margin-top:8px; display:flex; justify-content:space-between;">
+                        <span style="color:var(--info);">Vendido: <b>$${h.vendidoTotal}</b></span>
+                        <span style="color:var(--success);">Cobró: <b>$${h.cobrado}</b></span>
+                        <span style="color:var(--danger);">Deuda Sumada: <b>$${h.debeGenerado}</b></span>
+                    </div>
+                    
+                    <div class="export-actions" style="margin-top:10px;">
+                        <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--primary); color:var(--primary);" onclick="exportarPDFConsignacionFoto('${h.id}')">📄 PDF</button>
+                        <button class="btn btn-small btn-success" style="margin-top:0;" onclick="exportarImagenConsignacionHistorial('${h.id}')">📲 WhatsApp</button>
+                    </div>
+                </div>`;
+            }
         });
         cont.innerHTML = html;
     }
