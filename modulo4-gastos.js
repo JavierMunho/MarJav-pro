@@ -186,18 +186,13 @@ function m4_renderPendientes() {
     let localesConDeuda = (db.clientes || []).filter(c => (parseFloat(c.deuda) || 0) > 0);
     let totalDeudaConsignacion = localesConDeuda.reduce((s, c) => s + (parseFloat(c.deuda) || 0), 0);
 
-    if (pedidosSinCobrar.length === 0 && pedidosSinEntregar.length === 0 && localesConDeuda.length === 0) {
-        document.getElementById('m4-pendientes-container').innerHTML = '';
-        return;
-    }
-
     let filaPendiente = (icono, titulo, cantidad, total, filasDetalle) => {
-        if (cantidad === 0) return '';
+        let colorMonto = cantidad === 0 ? '#aaa' : 'var(--accent)';
         return `
         <details class="familia-collapse" style="margin-bottom:8px;">
             <summary>
                 <span>${icono} ${titulo} (${cantidad})</span>
-                <b style="color:var(--accent); margin-right:8px;">$${total.toFixed(0)}</b>
+                <b style="color:${colorMonto}; margin-right:8px;">$${total.toFixed(0)}</b>
             </summary>
             <div style="padding:10px;">${filasDetalle}</div>
         </details>`;
@@ -272,7 +267,7 @@ function m4_renderResumen() {
         </div>
     `;
 
-    m4_renderPendientes();
+    try { m4_renderPendientes(); } catch(e) { console.warn('Error mostrando pendientes:', e); }
 
     // --- Lista de movimientos (respeta el filtro de fechas) ---
     movsFiltrados.sort((a, b) => {
