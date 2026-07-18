@@ -325,41 +325,44 @@
             </div>
         </div>
 
-        <div class="section">
-            <h3 class="section-title">1. Resumen Financiero</h3>
-            <div class="grid-2" id="m4-mes-selector-wrap" style="margin-bottom: 5px;">
-                <div><label>Desde:</label><input type="date" id="m4-fecha-desde" onchange="m4_renderResumen()"></div>
-                <div><label>Hasta:</label><input type="date" id="m4-fecha-hasta" onchange="m4_renderResumen()"></div>
+        <div id="m4-tarjetas-container" style="padding: 15px 15px 0 15px;"></div>
+
+        <div style="padding: 0 15px;">
+            <div style="display:flex; gap:10px; margin-bottom:15px; margin-top:15px;">
+                <button onclick="m4_registrarMovimiento('Egreso')" style="flex:1; background:var(--danger); color:white; border:none; border-radius:10px; padding:16px; font-size:15px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">➖ Gasto</button>
+                <button onclick="m4_registrarMovimiento('Ingreso')" style="flex:1; background:var(--success); color:white; border:none; border-radius:10px; padding:16px; font-size:15px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">➕ Ingreso</button>
             </div>
-            <div id="m4-resumen-container" style="margin-top: 15px;"></div>
+            <div id="m4-form-rapido" style="display:none; background:#fff; border:1px solid #eee; border-radius:10px; padding:12px; margin-bottom:15px;">
+                <input type="text" id="m4-mov-desc" placeholder="Descripción" style="margin-top:0;">
+                <input type="number" id="m4-mov-monto" placeholder="Monto" style="margin-top:8px;">
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                    <label class="chk-label" style="padding:5px 10px; font-size:12px; margin:0;"><input type="radio" name="m4-medio" value="Efectivo" checked style="width:15px; height:15px;"> 💵 Efectivo</label>
+                    <label class="chk-label" style="padding:5px 10px; font-size:12px; margin:0;"><input type="radio" name="m4-medio" value="Transferencia" style="width:15px; height:15px;"> 🏦 Cuenta</label>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:10px;">
+                    <button id="m4-form-confirmar" onclick="m4_confirmarMovimiento()" style="flex:1; margin-top:0; padding:12px; border:none; border-radius:8px; color:white; font-weight:bold; cursor:pointer;">Guardar</button>
+                    <button onclick="m4_cancelarMovimiento()" style="flex-shrink:0; margin-top:0; padding:12px 16px; border:none; border-radius:8px; background:#eee; color:#555; font-weight:bold; cursor:pointer;">Cancelar</button>
+                </div>
+            </div>
         </div>
 
-        <div class="section" style="background:#fff3cd; border-color:#ffe69c;">
-            <h3 class="section-title" style="color:#856404; border-bottom-color:#ffe69c;">2. Registrar Gasto</h3>
-            <div class="grid-2">
-                <div><label>Fecha:</label><input type="date" id="m4-gasto-fecha"></div>
-                <div><label>Monto ($):</label><input type="number" id="m4-gasto-monto" placeholder="0.00"></div>
-            </div>
-            <label>Descripción:</label>
-            <input type="text" id="m4-gasto-desc" placeholder="Ej: Alquiler del depósito, Combustible, Sueldos...">
-            <label>Categoría (opcional):</label>
-            <select id="m4-gasto-categoria">
-                <option value="General">General</option>
-                <option value="Alquiler">Alquiler</option>
-                <option value="Sueldos">Sueldos</option>
-                <option value="Transporte">Transporte</option>
-                <option value="Insumos">Insumos / Mercadería</option>
-                <option value="Servicios">Servicios (luz, agua, internet)</option>
-                <option value="Impuestos">Impuestos</option>
-                <option value="Otro">Otro</option>
-            </select>
-            <button class="btn btn-accent" style="background:#e67e22;" onclick="m4_registrarGasto()">💾 Guardar Gasto</button>
-        </div>
-
-        <div class="section" style="background: transparent; border: none; padding: 0; box-shadow: none;">
+        <div class="section" style="background: transparent; border: none; padding: 0 15px;">
             <div style="background: #fff; padding: 15px; border-radius: 12px; border: 1px solid #eee;">
-                <h3 class="section-title">3. Listado de Gastos</h3>
-                <div id="m4-gastos-container"></div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h3 class="section-title" style="margin:0; border:none; padding:0;">Últimos Movimientos</h3>
+                    <button onclick="m4_exportarPDFMovimientos()" style="background:none; border:1px solid var(--accent); color:var(--accent); border-radius:8px; padding:6px 12px; font-size:11px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:4px;">📄 PDF</button>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <button onclick="m4_editarSaldoInicial()" style="background:none; border:none; color:#888; font-size:11px; text-decoration:underline; cursor:pointer; padding:0;">✏️ Editar saldo inicial</button>
+                </div>
+                <details class="familia-collapse" style="margin-bottom:12px;">
+                    <summary><span>📅 Filtrar por período (opcional)</span></summary>
+                    <div class="grid-2" style="padding:12px;">
+                        <div><label style="margin-top:0;">Desde:</label><input type="date" id="m4-fecha-desde" onchange="m4_renderResumen()"></div>
+                        <div><label style="margin-top:0;">Hasta:</label><input type="date" id="m4-fecha-hasta" onchange="m4_renderResumen()"></div>
+                    </div>
+                </details>
+                <div id="m4-movimientos-container"></div>
             </div>
         </div>
     </div>
@@ -498,7 +501,8 @@
         return {
             productos: [], familias: [], listas: [], clientes: [],
             stock_consignacion: {}, historial_consignacion: [], ventas: [],
-            precios_manuales: {}, pres_manuales: {}, conteos_pendientes: {}, gastos: []
+            precios_manuales: {}, pres_manuales: {}, conteos_pendientes: {}, gastos: [],
+            saldoInicialEfectivo: 0, saldoInicialCuenta: 0
         };
     }
 
@@ -549,6 +553,8 @@
         db.clientes.forEach(c => { if(!c.ocultos) c.ocultos = []; });
         if (!db.conteos_pendientes) db.conteos_pendientes = {};
         if (!db.gastos) db.gastos = [];
+        if (db.saldoInicialEfectivo === undefined) db.saldoInicialEfectivo = 0;
+        if (db.saldoInicialCuenta === undefined) db.saldoInicialCuenta = 0;
 
         for (let cId in db.stock_consignacion) {
             for (let pId in db.stock_consignacion[cId]) {
@@ -719,12 +725,12 @@
                 if (h.tipo === 'pago') {
                     filasHistorial.push({
                         Fecha: h.fecha, Local: cli ? cli.nombre : '(borrado)', Tipo: 'Pago',
-                        'Vendido Total ($)': '', 'Cobrado ($)': h.monto, 'Deuda Sumada ($)': -h.monto
+                        'Vendido Total ($)': '', 'Cobrado ($)': h.monto, 'Medio de Pago': h.medioPago || 'Efectivo', 'Deuda Sumada ($)': -h.monto
                     });
                 } else {
                     filasHistorial.push({
                         Fecha: h.fecha, Local: cli ? cli.nombre : '(borrado)', Tipo: 'Visita',
-                        'Vendido Total ($)': h.vendidoTotal, 'Cobrado ($)': h.cobrado, 'Deuda Sumada ($)': h.debeGenerado
+                        'Vendido Total ($)': h.vendidoTotal, 'Cobrado ($)': h.cobrado, 'Medio de Pago': h.cobrado > 0 ? (h.medioPago || 'Efectivo') : '', 'Deuda Sumada ($)': h.debeGenerado
                     });
                 }
             });
@@ -734,18 +740,19 @@
             // Hoja 5: Ventas / Remitos
             let filasVentas = db.ventas.map(v => ({
                 Fecha: v.fecha, Cliente: v.cliente, 'Total ($)': v.total,
-                Estado: v.estado, Cobro: v.pago,
+                Estado: v.estado, Cobro: v.pago, 'Medio de Pago': v.pago === 'Pagado' ? (v.medioPago || 'Efectivo') : '',
                 Items: v.items.map(i => `${i.cant}x ${i.nombre}`).join(' | ')
             }));
             let hojaVentas = XLSX.utils.json_to_sheet(filasVentas);
             XLSX.utils.book_append_sheet(wb, hojaVentas, 'Ventas');
 
-            // Hoja 6: Gastos
+            // Hoja 6: Gastos y Otros Ingresos (movimientos cargados a mano)
             let filasGastos = (db.gastos || []).map(g => ({
-                Fecha: g.fecha, Descripcion: g.descripcion, Categoria: g.categoria || 'General', 'Monto ($)': g.monto
+                Fecha: g.fecha, Tipo: g.tipo === 'Ingreso' ? 'Otro Ingreso' : 'Gasto', Descripcion: g.descripcion,
+                'Medio de Pago': g.medioPago || 'Efectivo', 'Monto ($)': g.monto
             }));
             let hojaGastos = XLSX.utils.json_to_sheet(filasGastos);
-            XLSX.utils.book_append_sheet(wb, hojaGastos, 'Gastos');
+            XLSX.utils.book_append_sheet(wb, hojaGastos, 'Gastos y Otros Ingresos');
 
             let fechaArchivo = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
             XLSX.writeFile(wb, `marJavPro_Datos_${fechaArchivo}.xlsx`);
@@ -1428,6 +1435,7 @@
 
         let deudaAnterior = c.deuda;
         c.deuda -= monto;
+        let medio = preguntarMedioPago();
 
         db.historial_consignacion.push({
             id: Date.now().toString(),
@@ -1435,6 +1443,7 @@
             fecha: new Date().toLocaleDateString(),
             tipo: 'pago',
             monto: monto,
+            medioPago: medio,
             deudaAnterior: deudaAnterior,
             deudaNueva: c.deuda
         });
@@ -1795,6 +1804,7 @@
         let totalVendido = pendiente ? pendiente.totalVendido : (parseInt(document.getElementById('m2-total-vendido').innerText) || 0);
         let cobrado = parseInt(document.getElementById('m2-cobrado-hoy').value) || 0;
         let debe = totalVendido - cobrado;
+        let medioPago = cobrado > 0 ? preguntarMedioPago() : null;
 
         let lineasPlanilla = [];
         let huboMovimiento = false;
@@ -1855,6 +1865,7 @@
             fecha: new Date().toLocaleDateString(),
             vendidoTotal: totalVendido,
             cobrado: cobrado,
+            medioPago: medioPago,
             debeGenerado: debe,
             planilla: lineasPlanilla
         });
@@ -2042,24 +2053,45 @@
                     <b style="font-size:14px;">${v.cliente}</b>
                     <span style="font-size:15px; font-weight:900; color:var(--success);">$${v.total}</span>
                 </div>
-                <div style="font-size:11px; color:#666; margin-bottom: 10px;">ID: #${v.id.slice(-4)} | Fecha: ${v.fecha}</div>
+                <div style="font-size:11px; color:#666; margin-bottom: 10px;">ID: #${v.id.slice(-4)} | Fecha: ${v.fecha}${v.pago === 'Pagado' && v.medioPago ? ' | 💰 ' + v.medioPago : ''}</div>
                 ${itemsHtml}
-                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
                     <span class="badge ${colorEst}" onclick="m3_toggleEstado('${v.id}', 'estado')" style="cursor:pointer;">Estado: ${v.estado}</span>
                     <span class="badge ${colorPag}" onclick="m3_toggleEstado('${v.id}', 'pago')" style="cursor:pointer;">Cobro: ${v.pago}</span>
                 </div>
                 <div class="export-actions">
                     <button class="btn btn-small btn-outline" style="margin-top:0;" onclick="exportarPDF('remito', '${v.id}')">📄 PDF</button>
                     <button class="btn btn-small btn-success" style="margin-top:0;" onclick="generarImagenRemito('${v.id}')">📲 Enviar por WhatsApp</button>
+                    <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--danger); color:var(--danger);" onclick="m3_borrarVenta('${v.id}')">🗑️ Borrar</button>
                 </div>
             </div>`;
         });
     }
 
+    function m3_borrarVenta(id) {
+        if (!confirm("⚠️ ¿Borrar este pedido/remito? No se puede deshacer.")) return;
+        db.ventas = db.ventas.filter(v => v.id !== id);
+        saveDB();
+        m3_renderPedidos();
+    }
+
+    // Pregunta simple de medio de pago para no tener que armar un formulario aparte cada vez.
+    function preguntarMedioPago() {
+        return confirm("Medio de pago recibido:\n\nAceptar = 💵 Efectivo\nCancelar = 🏦 Transferencia/Cuenta") ? 'Efectivo' : 'Transferencia';
+    }
+
     function m3_toggleEstado(id, tipo) {
         let v = db.ventas.find(x => x.id === id);
         if(tipo === 'estado') v.estado = v.estado === 'Preparación' ? 'Entregado' : 'Preparación';
-        if(tipo === 'pago') v.pago = v.pago === 'Pendiente' ? 'Pagado' : 'Pendiente';
+        if(tipo === 'pago') {
+            if (v.pago === 'Pendiente') {
+                v.pago = 'Pagado';
+                v.medioPago = preguntarMedioPago();
+            } else {
+                v.pago = 'Pendiente';
+                v.medioPago = null;
+            }
+        }
         saveDB(); m3_renderPedidos();
     }
 
