@@ -173,6 +173,64 @@ function m4_borrarMovimientoManual(id) {
     m4_renderResumen();
 }
 
+function m4_renderPendientes() {
+    // Pedidos sin cobrar (Módulo 3)
+    let pedidosSinCobrar = (db.ventas || []).filter(v => v.pago !== 'Pagado');
+    let totalSinCobrar = pedidosSinCobrar.reduce((s, v) => s + (parseFloat(v.total) || 0), 0);
+
+    // Pedidos sin entregar (Módulo 3)
+    let pedidosSinEntregar = (db.ventas || []).filter(v => v.estado !== 'Entregado');
+    let totalSinEntregar = pedidosSinEntregar.reduce((s, v) => s + (parseFloat(v.total) || 0), 0);
+
+    // Deuda de consignación (Módulo 2), solo locales con deuda > 0
+    let localesConDeuda = (db.clientes || []).filter(c => (parseFloat(c.deuda) || 0) > 0);
+    let totalDeudaConsignacion = localesConDeuda.reduce((s, c) => s + (parseFloat(c.deuda) || 0), 0);
+
+    if (pedidosSinCobrar.length === 0 && pedidosSinEntregar.length === 0 && localesConDeuda.length === 0) {
+        document.getElementById('m4-pendientes-container').innerHTML = '';
+        return;
+    }
+
+    let filaPendiente = (icono, titulo, cantidad, total, filasDetalle) => {
+        if (cantidad === 0) return '';
+        return `
+        <details class="familia-collapse" style="margin-bottom:8px;">
+            <summary>
+                <span>${icono} ${titulo} (${cantidad})</span>
+                <b style="color:var(--accent); margin-right:8px;">$${total.toFixed(0)}</b>
+            </summary>
+            <div style="padding:10px;">${filasDetalle}</div>
+        </details>`;
+    };
+
+    let detalleSinCobrar = pedidosSinCobrar.map(v =>
+        `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f0f0f0; font-size:12px;">
+            <span>${v.cliente} <span style="color:#999;">(${v.fecha})</span></span><b>$${v.total}</b>
+        </div>`
+    ).join('') || '<p style="font-size:11px; color:#999;">Nada pendiente.</p>';
+
+    let detalleSinEntregar = pedidosSinEntregar.map(v =>
+        `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f0f0f0; font-size:12px;">
+            <span>${v.cliente} <span style="color:#999;">(${v.fecha})</span></span><b>$${v.total}</b>
+        </div>`
+    ).join('') || '<p style="font-size:11px; color:#999;">Nada pendiente.</p>';
+
+    let detalleConsignacion = localesConDeuda.map(c =>
+        `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f0f0f0; font-size:12px;">
+            <span>${c.nombre}</span><b>$${c.deuda}</b>
+        </div>`
+    ).join('') || '<p style="font-size:11px; color:#999;">Nada pendiente.</p>';
+
+    document.getElementById('m4-pendientes-container').innerHTML = `
+        <div style="background:#fff; border:1px solid #eee; border-radius:12px; padding:12px; margin-top:12px;">
+            <div style="font-size:12px; font-weight:bold; color:#856404; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">⏳ Pendientes</div>
+            ${filaPendiente('📦', 'Pedidos sin cobrar', pedidosSinCobrar.length, totalSinCobrar, detalleSinCobrar)}
+            ${filaPendiente('🚚', 'Pedidos sin entregar', pedidosSinEntregar.length, totalSinEntregar, detalleSinEntregar)}
+            ${filaPendiente('🏪', 'Deuda en consignación', localesConDeuda.length, totalDeudaConsignacion, detalleConsignacion)}
+        </div>
+    `;
+}
+
 function m4_renderResumen() {
     let desde = document.getElementById('m4-fecha-desde').value;
     let hasta = document.getElementById('m4-fecha-hasta').value;
@@ -213,6 +271,8 @@ function m4_renderResumen() {
             <div style="flex:1; min-width:110px; background:#f4f6f7; border-radius:8px; padding:8px; text-align:center;">🏦 Cuenta<br><b style="font-size:14px;">$${cuentaAcum.toFixed(0)}</b></div>
         </div>
     `;
+
+    m4_renderPendientes();
 
     // --- Lista de movimientos (respeta el filtro de fechas) ---
     movsFiltrados.sort((a, b) => {
