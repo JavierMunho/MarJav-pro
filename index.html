@@ -18,6 +18,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
     <!-- BASE DE DATOS EN LA NUBE (Firebase Firestore, plan gratuito) -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -165,6 +166,19 @@
         </div>
         
         <div id="m1-editor-panel">
+            <div class="section" style="background:#e8f4f8; border-color:#bee5eb;">
+                <h3 class="section-title" style="color:#0c5460; border-bottom-color:#bee5eb;">📥 Actualizar Precios del Proveedor (semanal)</h3>
+                <p style="font-size:11px; color:#555; margin-top:0;">
+                    Subí el PDF que te manda el proveedor, o pegá el texto copiado del PDF. Comparamos con lo que ya tenés cargado y vos elegís qué aplicar — nada se cambia solo.
+                </p>
+                <label>Opción 1: Subir el PDF</label>
+                <input type="file" id="m1-pdf-proveedor" accept="application/pdf" onchange="m1_procesarPDFProveedor(event)">
+                <label>Opción 2: Pegar el texto del PDF</label>
+                <textarea id="m1-texto-proveedor" rows="4" placeholder="Mantené presionado sobre el PDF > Seleccionar todo > Copiar, y pegalo acá" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px; font-size:12px; box-sizing:border-box; margin-top:5px; font-family:inherit;"></textarea>
+                <button class="btn btn-info" onclick="m1_analizarTextoProveedor()">🔍 Analizar y Comparar Precios</button>
+                <div id="m1-revision-precios" style="margin-top:15px;"></div>
+            </div>
+
             <div class="section">
                 <h3 class="section-title">1. Crear Producto y Familia</h3>
                 <div class="grid-2">
@@ -371,6 +385,7 @@
 </div>
 
 <script src="modulo4-gastos.js"></script>
+<script src="modulo1-importar-precios.js"></script>
 
 <script>
     // ==========================================
