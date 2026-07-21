@@ -164,8 +164,25 @@
                 <button class="btn-back" onclick="nav('page-dashboard')">← Inicio</button><h2>📋 M1: Listas</h2>
             </div>
         </div>
+
+        <div class="section">
+            <h3 class="section-title">📋 Mis Listas</h3>
+            <div id="m1-listado-listas"></div>
+        </div>
+
+        <div class="section">
+            <h3 class="section-title">➕ Agregar...</h3>
+            <select id="m1-accion-select" onchange="m1_mostrarAccion(this.value)">
+                <option value="">-- Elegí una acción --</option>
+                <option value="producto">🆕 Nuevo Producto</option>
+                <option value="lista">📋 Nueva Lista</option>
+                <option value="combo">🎁 Nuevo Combo / Oferta</option>
+                <option value="proveedor">📥 Actualizar Lista Proveedor (PDF)</option>
+            </select>
+        </div>
         
         <div id="m1-editor-panel">
+            <div id="m1-accion-proveedor" style="display:none;">
             <div class="section" style="background:#e8f4f8; border-color:#bee5eb;">
                 <h3 class="section-title" style="color:#0c5460; border-bottom-color:#bee5eb;">📥 Actualizar Precios del Proveedor (semanal)</h3>
                 <p style="font-size:11px; color:#555; margin-top:0;">
@@ -178,9 +195,11 @@
                 <button class="btn btn-info" onclick="m1_analizarTextoProveedor()">🔍 Analizar y Comparar Precios</button>
                 <div id="m1-revision-precios" style="margin-top:15px;"></div>
             </div>
+            </div>
 
+            <div id="m1-accion-producto" style="display:none;">
             <div class="section">
-                <h3 class="section-title">1. Crear Producto y Familia</h3>
+                <h3 class="section-title">Nuevo Producto</h3>
                 <div class="grid-2">
                     <div><label>Nombre del Producto:</label><input type="text" id="m1-prod-nombre" placeholder="Ej: Mix Eco Banana"></div>
                     <div>
@@ -199,41 +218,56 @@
                 </div>
                 <button class="btn btn-info" onclick="m1_guardarProducto()">➕ Guardar Nuevo Producto</button>
             </div>
-
-            <div class="section" style="background:#fff3cd; border-color:#ffe69c;">
-                <h3 class="section-title" style="color:#856404; border-bottom-color:#ffe69c;">🎁 2. Crear Combo / Oferta</h3>
-                <div class="grid-2">
-                    <div><label>Nombre del Combo:</label><input type="text" id="m1-combo-nombre" placeholder="Ej: Combo Familiar"></div>
-                    <div><label>Precio Final Fijo ($):</label><input type="number" id="m1-combo-precio" placeholder="0.00"></div>
-                </div>
-                <div class="grid-1" style="margin-top: 10px;">
-                    <div><label>Descripción / Contenido:</label><input type="text" id="m1-combo-desc" placeholder="Ej: 1kg Mix Tropical + 500g Nuez"></div>
-                </div>
-                <button class="btn btn-accent" style="background:#e67e22;" onclick="m1_guardarCombo()">🎁 Guardar Combo Fijo</button>
             </div>
 
+            <div id="m1-accion-combo" style="display:none;">
+            <div class="section" style="background:#fff3cd; border-color:#ffe69c;">
+                <h3 class="section-title" style="color:#856404; border-bottom-color:#ffe69c;">🎁 Armar Combo / Oferta</h3>
+                <div class="grid-2">
+                    <div><label>Nombre del Combo:</label><input type="text" id="m1-combo-nombre" placeholder="Ej: Combo Familiar"></div>
+                    <div><label>Margen (%):</label><input type="number" id="m1-combo-margen" placeholder="Ej: 40"></div>
+                </div>
+                <label>Costo de Envase ($, opcional):</label>
+                <input type="number" id="m1-combo-envase" placeholder="0.00">
+
+                <label style="margin-top:12px;">Agregar producto al combo:</label>
+                <select id="m1-combo-producto-select"></select>
+                <div class="grid-2" style="margin-top:8px; align-items:end;">
+                    <div><label>Cantidad (gramos, o unidades si es por unidad):</label><input type="number" id="m1-combo-cantidad" placeholder="Ej: 500"></div>
+                    <div><button class="btn btn-info" style="margin-top:5px;" onclick="m1_agregarIngredienteCombo()">➕ Agregar al combo</button></div>
+                </div>
+
+                <div id="m1-combo-ingredientes" style="margin-top:12px;"></div>
+
+                <button class="btn btn-accent" style="background:#e67e22; margin-top:15px;" onclick="m1_guardarCombo()">🎁 Calcular y Guardar Combo</button>
+            </div>
+            </div>
+
+            <div id="m1-accion-lista" style="display:none;">
             <div class="section">
-                <h3 class="section-title">3. Crear Lista Personalizada</h3>
+                <h3 class="section-title">Nueva Lista Personalizada</h3>
                 <div class="grid-2">
                     <div><label>Nombre de la Lista:</label><input type="text" id="m1-lista-nombre" placeholder="Ej: Revendedores Sur"></div>
                     <div><label>Margen General (%):</label><input type="number" id="m1-lista-margen" placeholder="Ej: 40"></div>
                 </div>
-                <label>Columnas / Presentaciones Iniciales:</label>
-                <div class="chk-group">
-                    <label class="chk-label"><input type="checkbox" class="chk-col" value="5kg"> 5 Kg</label>
-                    <label class="chk-label"><input type="checkbox" class="chk-col" value="1kg"> 1 Kg</label>
-                    <label class="chk-label"><input type="checkbox" class="chk-col" value="500g"> 500 g</label>
-                    <label class="chk-label"><input type="checkbox" class="chk-col" value="250g"> 250 g</label>
-                    <label class="chk-label"><input type="checkbox" class="chk-col" value="100g"> 100 g</label>
-                    <label class="chk-label"><input type="checkbox" class="chk-col" value="unidad" checked> Unidad</label>
+                <label>Columnas / Presentaciones Iniciales (marcá las que uses):</label>
+                <div style="background:#f8f9fa; border-radius:8px; padding:8px; margin-top:5px;">
+                    <div style="display:flex; align-items:center; gap:8px; padding:5px 0;"><label class="chk-label" style="flex:1; margin:0;"><input type="checkbox" class="chk-col" value="5kg"> 5 Kg</label><input type="number" class="chk-envase" data-col="5kg" placeholder="Envase $ (opc.)" style="width:110px; margin:0; padding:6px; font-size:12px;"></div>
+                    <div style="display:flex; align-items:center; gap:8px; padding:5px 0;"><label class="chk-label" style="flex:1; margin:0;"><input type="checkbox" class="chk-col" value="1kg"> 1 Kg</label><input type="number" class="chk-envase" data-col="1kg" placeholder="Envase $ (opc.)" style="width:110px; margin:0; padding:6px; font-size:12px;"></div>
+                    <div style="display:flex; align-items:center; gap:8px; padding:5px 0;"><label class="chk-label" style="flex:1; margin:0;"><input type="checkbox" class="chk-col" value="500g"> 500 g</label><input type="number" class="chk-envase" data-col="500g" placeholder="Envase $ (opc.)" style="width:110px; margin:0; padding:6px; font-size:12px;"></div>
+                    <div style="display:flex; align-items:center; gap:8px; padding:5px 0;"><label class="chk-label" style="flex:1; margin:0;"><input type="checkbox" class="chk-col" value="250g"> 250 g</label><input type="number" class="chk-envase" data-col="250g" placeholder="Envase $ (opc.)" style="width:110px; margin:0; padding:6px; font-size:12px;"></div>
+                    <div style="display:flex; align-items:center; gap:8px; padding:5px 0;"><label class="chk-label" style="flex:1; margin:0;"><input type="checkbox" class="chk-col" value="100g"> 100 g</label><input type="number" class="chk-envase" data-col="100g" placeholder="Envase $ (opc.)" style="width:110px; margin:0; padding:6px; font-size:12px;"></div>
+                    <div style="display:flex; align-items:center; gap:8px; padding:5px 0;"><label class="chk-label" style="flex:1; margin:0;"><input type="checkbox" class="chk-col" value="unidad" checked> Unidad</label><input type="number" class="chk-envase" data-col="unidad" placeholder="Envase $ (opc.)" style="width:110px; margin:0; padding:6px; font-size:12px;"></div>
                 </div>
+                <p style="font-size:10px; color:#888; margin-top:5px;">El costo de envase es opcional — dejalo vacío si no querés sumarlo. Se suma al costo del producto antes de aplicar el margen, para esa presentación.</p>
                 <button class="btn btn-success" onclick="m1_crearLista()">➕ Crear Lista Nueva</button>
+            </div>
             </div>
         </div>
 
         <div class="section" style="padding: 10px 5px; background: transparent; border: none; box-shadow: none;">
             <div id="m1-header-edicion" style="background: #fff; padding: 15px; border-radius: 12px; margin-bottom: 10px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                <h3 class="section-title" style="margin-bottom: 10px;">4. Editor de Listas (Ocultar/Editar)</h3>
+                <h3 class="section-title" style="margin-bottom: 10px;">Editor de Listas (Ocultar/Editar)</h3>
                 <select id="m1-lista-select" onchange="m1_renderMatrizLista()"></select>
                 <div id="m1-opciones-lista" style="background:#f4f6f7; padding:10px; border-radius:8px; margin-top:10px; display:none; flex-wrap:wrap; gap:10px; align-items:center;"></div>
             </div>
@@ -386,6 +420,7 @@
 
 <script src="modulo4-gastos.js"></script>
 <script src="modulo1-importar-precios.js"></script>
+<script src="modulo1-listas.js"></script>
 
 <script>
     // ==========================================
@@ -565,6 +600,7 @@
             if(!l.nombresCols) l.nombresCols = {};
             if(!l.columnas) l.columnas = ['100g'];
             if(!l.celdasOcultas) l.celdasOcultas = [];
+            if(!l.costosEnvase) l.costosEnvase = {};
         });
         db.clientes.forEach(c => { if(!c.ocultos) c.ocultos = []; });
         if (!db.conteos_pendientes) db.conteos_pendientes = {};
@@ -806,6 +842,9 @@
         sel.innerHTML = '<option value="">-- Seleccione Lista a Editar --</option>';
         sel.innerHTML += `<option value="proveedor" style="font-weight:bold; color:var(--info);">🏭 Lista Proveedor (Costo Base / Editar Descripciones)</option>`;
         db.listas.forEach(l => sel.innerHTML += `<option value="${l.id}">${l.nombre} (Margen: ${l.margen}%)</option>`);
+        m1_poblarSelectComboProductos();
+        m1_renderIngredientesCombo();
+        if (typeof m1_renderListadoListas === 'function') m1_renderListadoListas();
     }
 
     function renombrarColumna(lid, colOriginal, nuevoNombre) {
@@ -842,20 +881,109 @@
         document.getElementById('m1-prod-nombre').value = ''; document.getElementById('m1-prod-desc').value = ''; document.getElementById('m1-prod-costo').value = '';
     }
 
+    let m1_comboIngredientes = [];
+
+    function m1_poblarSelectComboProductos() {
+        let sel = document.getElementById('m1-combo-producto-select');
+        if (!sel) return;
+        let valorActual = sel.value;
+        sel.innerHTML = '<option value="">-- Elegí un producto --</option>';
+        db.familias.forEach(f => {
+            if (f === '🎁 Combos y Ofertas') return; // evitar combos dentro de combos
+            let prods = db.productos.filter(p => p.familia === f);
+            if (prods.length === 0) return;
+            let grupo = document.createElement('optgroup');
+            grupo.label = f;
+            prods.forEach(p => {
+                let opt = document.createElement('option');
+                opt.value = p.id;
+                opt.text = p.nombre + (p.esUnidad ? ' (por unidad)' : '');
+                grupo.appendChild(opt);
+            });
+            sel.appendChild(grupo);
+        });
+        sel.value = valorActual;
+    }
+
+    function m1_agregarIngredienteCombo() {
+        let pid = document.getElementById('m1-combo-producto-select').value;
+        let cantidad = parseFloat(document.getElementById('m1-combo-cantidad').value);
+        if (!pid) return alert("⚠️ Elegí un producto.");
+        if (isNaN(cantidad) || cantidad <= 0) return alert("⚠️ Ingresá una cantidad válida.");
+
+        let producto = db.productos.find(p => p.id === pid);
+        if (!producto) return;
+
+        let costoCalculado, textoCantidad;
+        if (producto.esUnidad) {
+            costoCalculado = producto.costo * cantidad;
+            textoCantidad = `${cantidad} unidad${cantidad != 1 ? 'es' : ''} de`;
+        } else {
+            costoCalculado = (producto.costo / 1000) * cantidad;
+            textoCantidad = cantidad >= 1000 ? `${(cantidad / 1000).toFixed(cantidad % 1000 === 0 ? 0 : 2)}kg de` : `${cantidad}g de`;
+        }
+
+        m1_comboIngredientes.push({
+            productoId: pid, nombre: producto.nombre, textoCantidad: textoCantidad, costoCalculado: costoCalculado
+        });
+
+        document.getElementById('m1-combo-cantidad').value = '';
+        m1_renderIngredientesCombo();
+    }
+
+    function m1_quitarIngredienteCombo(idx) {
+        m1_comboIngredientes.splice(idx, 1);
+        m1_renderIngredientesCombo();
+    }
+
+    function m1_renderIngredientesCombo() {
+        let cont = document.getElementById('m1-combo-ingredientes');
+        if (m1_comboIngredientes.length === 0) {
+            cont.innerHTML = '<p style="font-size:11px; color:#888;">Todavía no agregaste productos al combo.</p>';
+            return;
+        }
+        let costoTotal = m1_comboIngredientes.reduce((s, i) => s + i.costoCalculado, 0);
+        let html = m1_comboIngredientes.map((i, idx) => `
+            <div style="display:flex; justify-content:space-between; align-items:center; background:#fff; border-radius:6px; padding:8px 10px; margin-bottom:6px; border:1px solid #eee;">
+                <span style="font-size:12px;">${i.textoCantidad} <b>${i.nombre}</b> <span style="color:#888;">($${i.costoCalculado.toFixed(0)})</span></span>
+                <button onclick="m1_quitarIngredienteCombo(${idx})" style="background:none; border:none; color:var(--danger); font-size:14px; cursor:pointer;">🗑️</button>
+            </div>
+        `).join('');
+        html += `<div style="text-align:right; font-size:12px; color:#555; margin-top:6px;">Costo del contenido: <b>$${costoTotal.toFixed(0)}</b></div>`;
+        cont.innerHTML = html;
+    }
+
     function m1_guardarCombo() {
         let nom = document.getElementById('m1-combo-nombre').value;
-        let desc = document.getElementById('m1-combo-desc').value;
-        let precio = parseFloat(document.getElementById('m1-combo-precio').value);
-        if(!nom || !precio) return alert("⚠️ Complete Nombre y Precio Final");
-        
+        let margenPct = parseFloat(document.getElementById('m1-combo-margen').value);
+        let envase = parseFloat(document.getElementById('m1-combo-envase').value) || 0;
+
+        if (!nom) return alert("⚠️ Ingresá el nombre del combo.");
+        if (m1_comboIngredientes.length === 0) return alert("⚠️ Agregá al menos un producto al combo.");
+        if (isNaN(margenPct)) return alert("⚠️ Ingresá el margen (%).");
+
+        let costoContenido = m1_comboIngredientes.reduce((s, i) => s + i.costoCalculado, 0);
+        let costoTotal = costoContenido + envase;
+        let margen = 1 + (margenPct / 100);
+        let precioFinal = redondear(costoTotal * margen);
+
+        let descripcionAuto = m1_comboIngredientes.map(i => `${i.textoCantidad} ${i.nombre}`).join(' + ');
+
         let fam = '🎁 Combos y Ofertas';
-        if(!db.familias.includes(fam)) db.familias.unshift(fam); 
+        if (!db.familias.includes(fam)) db.familias.unshift(fam);
         let pId = Date.now().toString();
-        db.productos.push({ id: pId, nombre: nom, descripcion: desc, familia: fam, costo: precio, esUnidad: true });
-        
-        db.listas.forEach(l => { db.precios_manuales[`${l.id}_${pId}_unidad`] = precio; });
-        saveDB(); initM1(); m1_renderMatrizLista(true); alert("✅ Combo Creado con Precio Fijo");
-        document.getElementById('m1-combo-nombre').value = ''; document.getElementById('m1-combo-desc').value = ''; document.getElementById('m1-combo-precio').value = '';
+        db.productos.push({ id: pId, nombre: nom, descripcion: descripcionAuto, familia: fam, costo: precioFinal, esUnidad: true });
+
+        db.listas.forEach(l => { db.precios_manuales[`${l.id}_${pId}_unidad`] = precioFinal; });
+
+        saveDB(); initM1(); m1_renderMatrizLista(true);
+        alert(`✅ Combo creado.\n\nCosto total (contenido + envase): $${costoTotal.toFixed(0)}\nPrecio final con margen: $${precioFinal}\n\nDescripción automática:\n${descripcionAuto}`);
+
+        document.getElementById('m1-combo-nombre').value = '';
+        document.getElementById('m1-combo-margen').value = '';
+        document.getElementById('m1-combo-envase').value = '';
+        m1_comboIngredientes = [];
+        m1_renderIngredientesCombo();
     }
 
     function m1_crearLista() {
@@ -866,28 +994,43 @@
         document.querySelectorAll('.chk-col:checked').forEach(c => cols.push(c.value));
         if(cols.length === 0) return alert("⚠️ Seleccione al menos una presentación");
         
-        db.listas.push({ id: Date.now().toString(), nombre: nom, margen: mar, columnas: cols, ocultos: [], celdasOcultas: [], nombresCols: {} });
+        let costosEnvase = {};
+        document.querySelectorAll('.chk-envase').forEach(inp => {
+            let val = parseFloat(inp.value);
+            if (!isNaN(val) && val > 0) costosEnvase[inp.dataset.col] = val;
+        });
+
+        db.listas.push({ id: Date.now().toString(), nombre: nom, margen: mar, columnas: cols, ocultos: [], celdasOcultas: [], nombresCols: {}, costosEnvase: costosEnvase });
         saveDB(); initM1(); alert("✅ Lista Creada");
         document.getElementById('m1-lista-nombre').value = ''; document.getElementById('m1-lista-margen').value = '';
+        document.querySelectorAll('.chk-envase').forEach(inp => inp.value = '');
     }
 
-    function calcularPrecioBase(costo, colId, esUnidad, margenPorcentaje, nombrePresEditado) {
+    function calcularPrecioBase(costo, colId, esUnidad, margenPorcentaje, nombrePresEditado, costoEnvase) {
         let margen = 1 + (margenPorcentaje / 100); let pBase = costo * margen;
-        if(esUnidad || colId === 'unidad' || (nombrePresEditado && nombrePresEditado.toLowerCase().includes('unidad'))) return redondear(pBase);
-        if (nombrePresEditado) {
+        let costoEnvaseConMargen = (costoEnvase || 0) * margen;
+        let subtotal;
+
+        if(esUnidad || colId === 'unidad' || (nombrePresEditado && nombrePresEditado.toLowerCase().includes('unidad'))) {
+            subtotal = pBase;
+        } else if (nombrePresEditado) {
             let str = nombrePresEditado.toLowerCase().trim();
             let num = parseFloat(str.replace(/[^0-9.,]/g, '').replace(',', '.'));
             if (!isNaN(num) && num > 0) {
-                if (str.includes('kg')) return redondear((pBase * num) * 0.95);
-                else if (str.includes('g')) return redondear((pBase / 1000) * num * 1.05);
+                if (str.includes('kg')) subtotal = (pBase * num) * 0.95;
+                else if (str.includes('g')) subtotal = (pBase / 1000) * num * 1.05;
+                else subtotal = pBase;
+            } else {
+                subtotal = pBase;
             }
-        }
-        if(colId === '5kg') return redondear((pBase * 5) * 0.95);
-        if(colId === '1kg') return redondear(pBase);
-        if(colId === '500g') return redondear((pBase / 2) * 1.05);
-        if(colId === '250g') return redondear((pBase / 4) * 1.05);
-        if(colId === '100g') return redondear((pBase / 10) * 1.05);
-        return redondear(pBase);
+        } else if(colId === '5kg') { subtotal = (pBase * 5) * 0.95; }
+        else if(colId === '1kg') { subtotal = pBase; }
+        else if(colId === '500g') { subtotal = (pBase / 2) * 1.05; }
+        else if(colId === '250g') { subtotal = (pBase / 4) * 1.05; }
+        else if(colId === '100g') { subtotal = (pBase / 10) * 1.05; }
+        else { subtotal = pBase; }
+
+        return redondear(subtotal + costoEnvaseConMargen);
     }
 
     function obtenerPrecioFinal(lid, pid, colId, costo, esUnidad, margen) {
@@ -895,8 +1038,9 @@
         let colName = (lista && lista.nombresCols && lista.nombresCols[colId]) ? lista.nombresCols[colId] : colId;
         let key = `${lid}_${pid}_${colId}`;
         let nombrePres = db.pres_manuales[key] || colName;
-        
-        let calc = calcularPrecioBase(costo, colId, esUnidad, margen, nombrePres);
+        let costoEnvase = (lista && lista.costosEnvase && lista.costosEnvase[colId]) ? lista.costosEnvase[colId] : 0;
+
+        let calc = calcularPrecioBase(costo, colId, esUnidad, margen, nombrePres, costoEnvase);
         let manual = db.precios_manuales[key];
         return { calculado: calc, final: manual !== undefined ? manual : calc, isManual: manual !== undefined };
     }
@@ -928,6 +1072,17 @@
     function m1_editarMargenLista(lid, nuevoMargen) {
         let lista = db.listas.find(l => l.id === lid); let m = parseFloat(nuevoMargen);
         if(!isNaN(m)) { lista.margen = m; saveDB(); initM1(); document.getElementById('m1-lista-select').value = lid; m1_renderMatrizLista(true); }
+    }
+
+    function m1_editarCostoEnvase(lid, col, valor) {
+        let lista = db.listas.find(l => l.id === lid);
+        if (!lista) return;
+        if (!lista.costosEnvase) lista.costosEnvase = {};
+        let val = parseFloat(valor);
+        if (isNaN(val) || val <= 0) delete lista.costosEnvase[col];
+        else lista.costosEnvase[col] = val;
+        saveDB();
+        m1_renderMatrizLista(true);
     }
 
     function m1_toggleVisibilidad(lid, pid) {
@@ -1253,15 +1408,16 @@
             let isChecked = document.getElementById('m1-mostrar-ocultos')?.checked ? 'checked' : '';
             let checkColsHtml = `
                 <div style="width:100%; margin-top:10px; padding-top:10px; border-top:1px dashed #ccc;">
-                    <b style="font-size:12px; color:var(--primary); display:block; margin-bottom:5px;">Columnas activas en esta lista:</b>
-                    <div class="chk-group">
-                        ${['5kg', '1kg', '500g', '250g', '100g', 'unidad'].map(c => `
-                            <label class="chk-label" style="font-size:11px; padding:4px 8px; cursor:pointer;">
+                    <b style="font-size:12px; color:var(--primary); display:block; margin-bottom:5px;">Columnas activas y costo de envase (opcional) en esta lista:</b>
+                    ${['5kg', '1kg', '500g', '250g', '100g', 'unidad'].map(c => `
+                        <div style="display:flex; align-items:center; gap:8px; padding:3px 0;">
+                            <label class="chk-label" style="font-size:11px; padding:4px 8px; cursor:pointer; flex:1; margin:0;">
                                 <input type="checkbox" onchange="m1_toggleColumnaLista('${lista.id}', '${c}')" ${lista.columnas.includes(c) ? 'checked' : ''}>
                                 ${(lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c}
                             </label>
-                        `).join('')}
-                    </div>
+                            <input type="number" value="${(lista.costosEnvase && lista.costosEnvase[c]) ? lista.costosEnvase[c] : ''}" placeholder="Envase $" onchange="m1_editarCostoEnvase('${lista.id}', '${c}', this.value)" style="width:90px; margin:0; padding:6px; font-size:11px;">
+                        </div>
+                    `).join('')}
                 </div>
             `;
             opcContainer.innerHTML = `
@@ -2521,96 +2677,110 @@
         } catch(e) { alert("⚠️ Error: " + e.message); }
     }
 
+    // Arma el PDF de una lista y devuelve {doc, nombreArchivo} SIN guardarlo — así lo puede
+    // usar tanto la descarga clásica (exportarPDF) como el botón de compartir directo.
+    function m1_construirPDFLista(listId) {
+        const { jsPDF } = window.jspdf; const doc = new jsPDF();
+
+        let isProveedor = (listId === 'proveedor');
+        let lista = isProveedor ? {nombre: 'Lista Proveedor (Costos Base)', columnas: ['Costo Base'], margen: 0} : db.listas.find(x => x.id === listId);
+        if (!lista) return null;
+
+        doc.setFillColor(44, 62, 80);
+        doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22);
+        doc.setFont("helvetica", "bold");
+        doc.text(lista.nombre.toUpperCase(), doc.internal.pageSize.getWidth() / 2, 18, { align: "center" });
+
+        let fechaHoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Actualizada al: ${fechaHoy}`, doc.internal.pageSize.getWidth() / 2, 25, { align: "center" });
+
+        let headers = ['PRODUCTO'];
+        if(isProveedor) headers.push('COSTO BASE');
+        else {
+            lista.columnas.forEach(c => headers.push(((lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c).toUpperCase()));
+        }
+
+        let bodyData = [];
+        db.familias.forEach(f => {
+            let prods = db.productos.filter(p => p.familia === f);
+            if(prods.length > 0) {
+                let hasItems = false; let famRows = [];
+                prods.forEach(p => {
+                    if(!isProveedor && lista.ocultos && lista.ocultos.includes(p.id)) return;
+                    hasItems = true;
+                    let nombreDisplay = p.nombre;
+                    if (p.descripcion && p.descripcion.trim() !== "") nombreDisplay += `\n(${p.descripcion})`;
+
+                    let row = [nombreDisplay];
+                    if(isProveedor) row.push(`$${p.costo}`);
+                    else {
+                        lista.columnas.forEach(c => {
+                            let keyCelda = `${p.id}_${c}`;
+                            if (lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda)) row.push('-');
+                            else if ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad')) row.push('-');
+                            else row.push(`$${obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen).final}`);
+                        });
+                    }
+                    famRows.push(row);
+                });
+
+                if(hasItems) {
+                    bodyData.push([{
+                        content: f.toUpperCase(),
+                        colSpan: headers.length,
+                        styles: { fillColor: [230, 126, 34], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', fontSize: 10 }
+                    }]);
+                    bodyData = bodyData.concat(famRows);
+                }
+            }
+        });
+
+        doc.autoTable({
+            startY: 35,
+            head: [headers],
+            body: bodyData,
+            theme: 'striped',
+            styles: { fontSize: 8.5, cellPadding: 1.5, valign: 'middle' },
+            headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], halign: 'center', fontSize: 9 },
+            columnStyles: { 0: { cellWidth: 85, fontStyle: 'bold' } },
+            didParseCell: function(data) {
+                if (data.section === 'body' && data.column.index > 0 && data.row.raw.length > 1) {
+                    data.cell.styles.halign = 'center';
+                }
+            },
+            didDrawPage: function (data) {
+                let textY = doc.internal.pageSize.getHeight() - 10;
+                doc.setFontSize(8);
+                doc.setFont("helvetica", "italic");
+                doc.setTextColor(150, 150, 150);
+                doc.text("Precios sujetos a modificaciones sin previo aviso.", data.settings.margin.left, textY);
+                doc.text(`Página ${doc.internal.getNumberOfPages()}`, doc.internal.pageSize.getWidth() / 2, textY, { align: "center" });
+                doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", doc.internal.pageSize.getWidth() - data.settings.margin.right, textY, { align: "right" });
+            }
+        });
+
+        return { doc: doc, nombreArchivo: `Lista_${lista.nombre.replace(/\s+/g, '_')}.pdf` };
+    }
+
     function exportarPDF(tipo, idRel) {
         try {
-            const { jsPDF } = window.jspdf; const doc = new jsPDF();
-            
             if(tipo === 'lista') {
                 let listId = document.getElementById('m1-lista-select').value;
                 if(!listId) return alert("Seleccioná una lista primero.");
-                let isProveedor = (listId === 'proveedor');
-                let lista = isProveedor ? {nombre: 'Lista Proveedor (Costos Base)', columnas: ['Costo Base'], margen: 0} : db.listas.find(x => x.id === listId);
-                
-                doc.setFillColor(44, 62, 80); 
-                doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
-                
-                doc.setTextColor(255, 255, 255);
-                doc.setFontSize(22);
-                doc.setFont("helvetica", "bold");
-                doc.text(lista.nombre.toUpperCase(), doc.internal.pageSize.getWidth() / 2, 18, { align: "center" });
-                
-                let fechaHoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
-                doc.setFontSize(10);
-                doc.setFont("helvetica", "normal");
-                doc.text(`Actualizada al: ${fechaHoy}`, doc.internal.pageSize.getWidth() / 2, 25, { align: "center" });
+                let resultado = m1_construirPDFLista(listId);
+                if (!resultado) return;
+                resultado.doc.save(resultado.nombreArchivo);
+                return;
+            }
 
-                let headers = ['PRODUCTO'];
-                if(isProveedor) headers.push('COSTO BASE'); 
-                else {
-                    lista.columnas.forEach(c => headers.push(((lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c).toUpperCase()));
-                }
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
 
-                let bodyData = [];
-                db.familias.forEach(f => {
-                    let prods = db.productos.filter(p => p.familia === f);
-                    if(prods.length > 0) {
-                        let hasItems = false; let famRows = [];
-                        prods.forEach(p => {
-                            if(!isProveedor && lista.ocultos && lista.ocultos.includes(p.id)) return;
-                            hasItems = true;
-                            let nombreDisplay = p.nombre;
-                            if (p.descripcion && p.descripcion.trim() !== "") nombreDisplay += `\n(${p.descripcion})`;
-                            
-                            let row = [nombreDisplay];
-                            if(isProveedor) row.push(`$${p.costo}`);
-                            else {
-                                lista.columnas.forEach(c => {
-                                    let keyCelda = `${p.id}_${c}`;
-                                    if (lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda)) row.push('-');
-                                    else if ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad')) row.push('-');
-                                    else row.push(`$${obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen).final}`);
-                                });
-                            }
-                            famRows.push(row);
-                        });
-                        
-                        if(hasItems) {
-                            bodyData.push([{ 
-                                content: f.toUpperCase(), 
-                                colSpan: headers.length, 
-                                styles: { fillColor: [230, 126, 34], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', fontSize: 10 } 
-                            }]);
-                            bodyData = bodyData.concat(famRows);
-                        }
-                    }
-                });
-
-                doc.autoTable({ 
-                    startY: 35, 
-                    head: [headers], 
-                    body: bodyData, 
-                    theme: 'striped', 
-                    styles: { fontSize: 8.5, cellPadding: 1.5, valign: 'middle' }, 
-                    headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], halign: 'center', fontSize: 9 },
-                    columnStyles: { 0: { cellWidth: 85, fontStyle: 'bold' } },
-                    didParseCell: function(data) {
-                        if (data.section === 'body' && data.column.index > 0 && data.row.raw.length > 1) { 
-                            data.cell.styles.halign = 'center';
-                        }
-                    },
-                    didDrawPage: function (data) {
-                        let textY = doc.internal.pageSize.getHeight() - 10;
-                        doc.setFontSize(8);
-                        doc.setFont("helvetica", "italic");
-                        doc.setTextColor(150, 150, 150);
-                        doc.text("Precios sujetos a modificaciones sin previo aviso.", data.settings.margin.left, textY);
-                        doc.text(`Página ${doc.internal.getNumberOfPages()}`, doc.internal.pageSize.getWidth() / 2, textY, { align: "center" });
-                        doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", doc.internal.pageSize.getWidth() - data.settings.margin.right, textY, { align: "right" });
-                    }
-                });
-                doc.save(`Lista_${lista.nombre.replace(/\s+/g, '_')}.pdf`);
-                
-            } else if(tipo === 'remito') {
+            if(tipo === 'remito') {
                 let v = db.ventas.find(x => x.id === idRel);
 
                 doc.setFillColor(44, 62, 80);
