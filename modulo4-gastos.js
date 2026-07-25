@@ -101,6 +101,88 @@ function m4_obtenerTodosLosMovimientos() {
     return movs;
 }
 
+// --- Costo real de lo vendido (para calcular la Ganancia Neta de verdad) ---
+
+// Costo de un remito (Módulo 3): usa el costo base del producto y el peso/cantidad
+// vendida. Para productos por peso, el peso viene en el nombre del ítem, ej:
+// "Mix Tropical (500g)" — lo mismo que arma m3_agregarItemDesdeAcordeon.
+function m4_costoVenta(v) {
+    let costoTotal = 0;
+    (v.items || []).forEach(item => {
+        let producto = db.productos.find(p => p.id === item.id);
+        if (!producto) return; // producto borrado: no podemos saber el costo, lo omitimos
+
+        if (producto.familia === '🎁 Combos y Ofertas') {
+            // Los combos guardan su costo real (contenido + envase) al crearlos.
+            let costoUnitCombo = (producto.costoReal !== undefined) ? producto.costoReal : 0;
+            costoTotal += costoUnitCombo * (item.cant || 0);
+            return;
+        }
+
+        if (producto.esUnidad) {
+            costoTotal += (producto.costo || 0) * (item.cant || 0);
+        } else {
+            let match = (item.nombre || '').match(/\(([\d.,]+)\s*(kg|g)\)/i);
+            let gramos = 0;
+            if (match) {
+                let num = parseFloat(match[1].replace(',', '.'));
+                gramos = match[2].toLowerCase() === 'kg' ? num * 1000 : num;
+            }
+            costoTotal += ((producto.costo || 0) / 1000) * gramos * (item.cant || 0);
+        }
+    });
+    return costoTotal;
+}
+
+// Costo de una visita de consignación: la planilla ya guarda "vend" (cantidad
+// vendida) por producto, en la misma unidad de referencia que usa ese módulo
+// (100g para productos por peso, unidad para el resto).
+function m4_costoConsignacion(h) {
+    let costoTotal = 0;
+    (h.planilla || []).forEach(item => {
+        let producto = db.productos.find(p => p.id === item.pid);
+        if (!producto) return;
+        let costoUnitario = producto.esUnidad ? (producto.costo || 0) : ((producto.costo || 0) / 10);
+        costoTotal += costoUnitario * (item.vend || 0);
+    });
+    return costoTotal;
+}
+
+function m4_editarCajaActual() {
+    let todosMovs = m4_obtenerTodosLosMovimientos();
+    let efectivoActual = parseFloat(db.saldoInicialEfectivo) || 0;
+    let cuentaActual = parseFloat(db.saldoInicialCuenta) || 0;
+    todosMovs.forEach(m => {
+        let signo = m.tipo === 'Ingreso' ? 1 : -1;
+        if (m.medio === 'Efectivo') efectivoActual += signo * m.monto;
+        else cuentaActual += signo * m.monto;
+    });
+
+    let nuevoEfeStr = prompt(`Efectivo actual calculado: $${efectivoActual.toFixed(0)}\n\n¿Cuál es el valor real de Efectivo?`, efectivoActual.toFixed(0));
+    if (nuevoEfeStr === null) return;
+    let nuevoCuentaStr = prompt(`Cuenta actual calculada: $${cuentaActual.toFixed(0)}\n\n¿Cuál es el valor real de Cuenta?`, cuentaActual.toFixed(0));
+    if (nuevoCuentaStr === null) return;
+
+    let nuevoEfe = parseFloat(nuevoEfeStr);
+    let nuevoCuenta = parseFloat(nuevoCuentaStr);
+    if (isNaN(nuevoEfe) || isNaN(nuevoCuenta)) return alert("⚠️ Ingresá números válidos.");
+
+    let difEfe = nuevoEfe - efectivoActual;
+    let difCuenta = nuevoCuenta - cuentaActual;
+    let fecha = new Date().toISOString().split('T')[0];
+
+    if (!db.gastos) db.gastos = [];
+    if (Math.abs(difEfe) > 0.01) {
+        db.gastos.unshift({ id: Date.now().toString() + 'a', fecha: fecha, descripcion: 'Ajuste de saldo', monto: Math.abs(difEfe), tipo: difEfe > 0 ? 'Ingreso' : 'Egreso', categoria: 'Ajuste', medioPago: 'Efectivo' });
+    }
+    if (Math.abs(difCuenta) > 0.01) {
+        db.gastos.unshift({ id: Date.now().toString() + 'b', fecha: fecha, descripcion: 'Ajuste de saldo', monto: Math.abs(difCuenta), tipo: difCuenta > 0 ? 'Ingreso' : 'Egreso', categoria: 'Ajuste', medioPago: 'Transferencia' });
+    }
+
+    saveDB();
+    m4_renderResumen();
+}
+
 function m4_editarSaldoInicial() {
     let efeStr = prompt("Saldo inicial en EFECTIVO (lo que ya tenías antes de usar la app):", db.saldoInicialEfectivo || 0);
     if (efeStr === null) return;
@@ -242,11 +324,20 @@ function m4_renderResumen() {
     });
     let caja = efectivoAcum + cuentaAcum;
 
-    // --- GANANCIA NETA: ingresos menos gastos, solo del período filtrado ---
+    // --- GANANCIA NETA: ingresos, menos el costo de lo vendido, menos gastos — solo del período filtrado ---
     let movsFiltrados = todosMovs.filter(m => m4_enRango(m.fecha, desde, hasta));
     let ingresosPeriodo = 0, egresosPeriodo = 0;
     movsFiltrados.forEach(m => { if (m.tipo === 'Ingreso') ingresosPeriodo += m.monto; else egresosPeriodo += m.monto; });
-    let gananciaNeta = ingresosPeriodo - egresosPeriodo;
+
+    let costoVendidoPeriodo = 0;
+    (db.ventas || []).forEach(v => {
+        if (v.pago === 'Pagado' && m4_enRango(v.fecha, desde, hasta)) costoVendidoPeriodo += m4_costoVenta(v);
+    });
+    (db.historial_consignacion || []).forEach(h => {
+        if (h.tipo !== 'pago' && m4_enRango(h.fecha, desde, hasta)) costoVendidoPeriodo += m4_costoConsignacion(h);
+    });
+
+    let gananciaNeta = ingresosPeriodo - costoVendidoPeriodo - egresosPeriodo;
 
     document.getElementById('m4-tarjetas-container').innerHTML = `
         <div class="grid-2">
@@ -258,13 +349,19 @@ function m4_renderResumen() {
             <div style="background:#eaf2fb; border:2px solid var(--info); border-radius:12px; padding:18px 10px; text-align:center;">
                 <div style="font-size:12px; font-weight:bold; color:var(--info); text-transform:uppercase; letter-spacing:0.5px;">Ganancia Neta</div>
                 <div style="font-size:26px; font-weight:900; color:var(--info); margin-top:6px; word-break:break-all;">$${gananciaNeta.toFixed(0)}</div>
-                <div style="font-size:11px; color:#888; margin-top:4px;">Período seleccionado</div>
+                <div style="font-size:11px; color:#888; margin-top:4px;">Ingresos − Costo − Gastos</div>
             </div>
         </div>
         <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; font-size:11px; color:#666;">
             <div style="flex:1; min-width:110px; background:#f4f6f7; border-radius:8px; padding:8px; text-align:center;">💵 Efectivo<br><b style="font-size:14px;">$${efectivoAcum.toFixed(0)}</b></div>
             <div style="flex:1; min-width:110px; background:#f4f6f7; border-radius:8px; padding:8px; text-align:center;">🏦 Cuenta<br><b style="font-size:14px;">$${cuentaAcum.toFixed(0)}</b></div>
         </div>
+        <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; font-size:10px; color:#888; text-align:center;">
+            <div style="flex:1; min-width:90px;">Ingresos<br><b style="color:var(--success);">$${ingresosPeriodo.toFixed(0)}</b></div>
+            <div style="flex:1; min-width:90px;">Costo vendido<br><b style="color:var(--danger);">-$${costoVendidoPeriodo.toFixed(0)}</b></div>
+            <div style="flex:1; min-width:90px;">Gastos<br><b style="color:var(--danger);">-$${egresosPeriodo.toFixed(0)}</b></div>
+        </div>
+        <button onclick="m4_editarCajaActual()" style="width:100%; margin-top:10px; background:none; border:1px dashed #ccc; color:#888; font-size:11px; padding:8px; border-radius:8px; cursor:pointer;">✏️ Corregir valor actual de Efectivo/Cuenta</button>
     `;
 
     try { m4_renderPendientes(); } catch(e) { console.warn('Error mostrando pendientes:', e); }

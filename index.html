@@ -972,7 +972,7 @@
         let fam = '🎁 Combos y Ofertas';
         if (!db.familias.includes(fam)) db.familias.unshift(fam);
         let pId = Date.now().toString();
-        db.productos.push({ id: pId, nombre: nom, descripcion: descripcionAuto, familia: fam, costo: precioFinal, esUnidad: true });
+        db.productos.push({ id: pId, nombre: nom, descripcion: descripcionAuto, familia: fam, costo: precioFinal, costoReal: costoTotal, esUnidad: true });
 
         db.listas.forEach(l => { db.precios_manuales[`${l.id}_${pId}_unidad`] = precioFinal; });
 
