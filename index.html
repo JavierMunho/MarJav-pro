@@ -351,8 +351,17 @@
                 </table>
             </div>
             
-            <div style="background: #eef; padding: 12px; border-radius: 8px; margin-top: 15px; text-align: right;">
-                <h3 style="margin:0; color:var(--primary); font-size: 18px;">Total Remito: $<span id="m3-total">0</span></h3>
+            <div style="background: #eef; padding: 12px; border-radius: 8px; margin-top: 15px;">
+                <div style="display:flex; justify-content:space-between; font-size:13px; color:#666;">
+                    <span>Subtotal:</span><span>$<span id="m3-subtotal">0</span></span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                    <label style="margin:0; font-size:13px; color:#666;">Descuento / Ajuste ($):</label>
+                    <input type="number" id="m3-ajuste" value="0" oninput="m3_renderCarrito()" style="width:110px; margin:0; padding:8px; text-align:right;">
+                </div>
+                <div style="text-align:right; margin-top:8px; border-top:1px solid #ccd; padding-top:8px;">
+                    <h3 style="margin:0; color:var(--primary); font-size: 18px;">Total Final: $<span id="m3-total">0</span></h3>
+                </div>
             </div>
             <button class="btn btn-accent" onclick="m3_guardarRemito()">💾 Generar Solicitud / Remito</button>
         </div>
@@ -1780,9 +1789,17 @@
             </div>
             
             <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #e9ecef;">
-                <div style="display: flex; justify-content: space-between; font-size: 18px; margin-bottom: 10px; border-bottom:1px solid #ddd; padding-bottom:10px;">
+                <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 8px; color:#666;">
+                    <span>Total Vendido:</span>
+                    <span>$<span id="m2-total-vendido">${pendiente ? pendiente.totalVendido : 0}</span></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items:center; margin-bottom: 8px;">
+                    <label style="margin:0; font-size:13px; color:#666;">Descuento ($):</label>
+                    <input type="number" id="m2-descuento" value="0" oninput="m2_actualizarTotalConDescuento()" style="width:110px; margin:0; padding:8px; text-align:right;">
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 18px; margin-bottom: 10px; border-bottom:1px solid #ddd; padding-bottom:10px; border-top:1px solid #ddd; padding-top:8px;">
                     <span>Total a Cobrar:</span>
-                    <b style="color:var(--danger);">$<span id="m2-total-vendido">${pendiente ? pendiente.totalVendido : 0}</span></b>
+                    <b style="color:var(--danger);">$<span id="m2-total-neto">${pendiente ? pendiente.totalVendido : 0}</span></b>
                 </div>
                 <label>Pago recibido en el momento ($):</label>
                 <input type="number" id="m2-cobrado-hoy" value="0" style="font-size: 18px; font-weight: bold; color: var(--success);">
@@ -1913,6 +1930,17 @@
             }
         });
         document.getElementById('m2-total-vendido').innerText = total;
+        m2_actualizarTotalConDescuento();
+    }
+
+    // Recalcula "Total a Cobrar" restando el descuento cargado, cada vez que
+    // cambia el descuento o se recalcula el total vendido.
+    function m2_actualizarTotalConDescuento() {
+        let total = parseFloat(document.getElementById('m2-total-vendido').innerText) || 0;
+        let descuentoEl = document.getElementById('m2-descuento');
+        let descuento = descuentoEl ? (parseFloat(descuentoEl.value) || 0) : 0;
+        let netoEl = document.getElementById('m2-total-neto');
+        if (netoEl) netoEl.innerText = total - descuento;
     }
 
     // Solo actualiza la columna "Fin" mientras hay un conteo pendiente (Cont y Vend ya están fijos)
@@ -1974,8 +2002,10 @@
         let c = db.clientes.find(x => x.id === cid);
         let pendiente = db.conteos_pendientes[cid];
         let totalVendido = pendiente ? pendiente.totalVendido : (parseInt(document.getElementById('m2-total-vendido').innerText) || 0);
+        let descuento = parseFloat(document.getElementById('m2-descuento').value) || 0;
+        let totalConDescuento = totalVendido - descuento;
         let cobrado = parseInt(document.getElementById('m2-cobrado-hoy').value) || 0;
-        let debe = totalVendido - cobrado;
+        let debe = totalConDescuento - cobrado;
         let medioPago = cobrado > 0 ? preguntarMedioPago() : null;
 
         let lineasPlanilla = [];
@@ -2036,6 +2066,8 @@
             clienteId: cid,
             fecha: new Date().toLocaleDateString(),
             vendidoTotal: totalVendido,
+            descuento: descuento,
+            vendidoConDescuento: totalConDescuento,
             cobrado: cobrado,
             medioPago: medioPago,
             debeGenerado: debe,
@@ -2079,8 +2111,9 @@
                         <b style="color:var(--primary);">📅 Visita ${h.fecha}</b>
                     </div>
                     
-                    <div style="background:#f8f9fa; padding:8px; border-radius:6px; font-size:12px; margin-top:8px; display:flex; justify-content:space-between;">
+                    <div style="background:#f8f9fa; padding:8px; border-radius:6px; font-size:12px; margin-top:8px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;">
                         <span style="color:var(--info);">Vendido: <b>$${h.vendidoTotal}</b></span>
+                        ${h.descuento ? `<span style="color:#e67e22;">Descuento: <b>-$${h.descuento}</b></span>` : ''}
                         <span style="color:var(--success);">Cobró: <b>$${h.cobrado}</b></span>
                         <span style="color:var(--danger);">Deuda Sumada: <b>$${h.debeGenerado}</b></span>
                     </div>
@@ -2182,29 +2215,37 @@
 
     function m3_renderCarrito() {
         let tb = document.getElementById('m3-carrito-body'); tb.innerHTML = '';
-        let total = 0;
+        let subtotal = 0;
         carrito_venta.forEach((i, idx) => {
             tb.innerHTML += `<tr>
                 <td><b>${i.cant}</b></td><td style="text-align:left; font-size:11px;">${i.nombre}</td>
                 <td><b>$${i.subtotal}</b></td>
                 <td><button onclick="carrito_venta.splice(${idx},1); m3_renderCarrito();" style="background:var(--danger); border:none; color:white; border-radius:4px; padding:4px 8px; font-weight:bold; cursor:pointer;">X</button></td>
             </tr>`;
-            total += i.subtotal;
+            subtotal += i.subtotal;
         });
-        document.getElementById('m3-total').innerText = total;
+        let ajusteEl = document.getElementById('m3-ajuste');
+        let ajuste = ajusteEl ? (parseFloat(ajusteEl.value) || 0) : 0;
+        document.getElementById('m3-subtotal').innerText = subtotal;
+        document.getElementById('m3-total').innerText = subtotal - ajuste;
     }
 
     function m3_guardarRemito() {
         let f = document.getElementById('m3-fecha').value;
         let c = document.getElementById('m3-cliente').value;
         if(!c || carrito_venta.length === 0) return alert("⚠️ Falta cliente o ítems");
-        
+
+        let subtotal = parseFloat(document.getElementById('m3-subtotal').innerText) || 0;
+        let ajuste = parseFloat(document.getElementById('m3-ajuste').value) || 0;
+        let totalFinal = parseFloat(document.getElementById('m3-total').innerText) || 0;
+
         let remito = {
             id: Date.now().toString(), fecha: f, cliente: c, items: carrito_venta,
-            total: document.getElementById('m3-total').innerText, estado: 'Preparación', pago: 'Pendiente'
+            subtotal: subtotal, ajuste: ajuste, total: totalFinal, estado: 'Preparación', pago: 'Pendiente'
         };
         db.ventas.unshift(remito);
         saveDB(); carrito_venta = []; m3_renderCarrito(); document.getElementById('m3-cliente').value='';
+        document.getElementById('m3-ajuste').value = '0';
         alert("✅ Remito Guardado."); m3_renderPedidos();
     }
 
@@ -2436,7 +2477,8 @@
 
             let finalY = doc.lastAutoTable.finalY + 10;
             doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.setTextColor(0, 0, 0);
-            doc.text(`Cobrado: $${h.cobrado}  |  Deuda sumada: $${h.debeGenerado}  |  Saldo actual: $${c.deuda}`, 15, finalY);
+            let lineaResumen = h.descuento ? `Descuento: -$${h.descuento}  |  Cobrado: $${h.cobrado}  |  Deuda sumada: $${h.debeGenerado}  |  Saldo actual: $${c.deuda}` : `Cobrado: $${h.cobrado}  |  Deuda sumada: $${h.debeGenerado}  |  Saldo actual: $${c.deuda}`;
+            doc.text(lineaResumen, 15, finalY);
 
             doc.setFontSize(9); doc.setFont("helvetica", "italic"); doc.setTextColor(120, 120, 120);
             doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 12);
@@ -2656,6 +2698,7 @@
                         </table>
                         <div style="background:#f4f6f7; border-radius:8px; padding:14px; margin-top:15px; font-size:13px; color:#333;">
                             <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Vendido:</span><b>$${h.vendidoTotal}</b></div>
+                            ${h.descuento ? `<div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Descuento:</span><b style="color:#e67e22;">-$${h.descuento}</b></div>` : ''}
                             <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Cobrado:</span><b style="color:#27ae60;">$${h.cobrado}</b></div>
                             <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Deuda sumada:</span><b style="color:#c0392b;">$${h.debeGenerado}</b></div>
                             <div style="display:flex; justify-content:space-between; border-top:1px solid #ddd; padding-top:8px; margin-top:4px;"><span style="font-weight:bold;">Saldo Total Actual:</span><b style="font-size:16px; color:#2c3e50;">$${c.deuda}</b></div>
@@ -2812,6 +2855,14 @@
                 });
 
                 let finalY = doc.lastAutoTable.finalY + 8;
+                if (v.ajuste && v.ajuste !== 0) {
+                    doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.setTextColor(0, 0, 0);
+                    doc.text(`Subtotal: $${v.subtotal}`, 190, finalY, { align: "right" });
+                    doc.setTextColor(192, 57, 43);
+                    doc.text(`Descuento: -$${v.ajuste}`, 190, finalY + 6, { align: "right" });
+                    finalY += 12;
+                    doc.setTextColor(0, 0, 0);
+                }
                 doc.setFillColor(240, 240, 240);
                 doc.rect(120, finalY, 75, 14, 'F');
                 doc.setFontSize(13);
@@ -2866,6 +2917,11 @@
                             </thead>
                             <tbody>${itemsHtml}</tbody>
                         </table>
+                        ${v.ajuste && v.ajuste !== 0 ? `
+                        <div style="margin-top:10px; font-size:12px; color:#666;">
+                            <div style="display:flex; justify-content:space-between;"><span>Subtotal:</span><span>$${v.subtotal}</span></div>
+                            <div style="display:flex; justify-content:space-between; color:#c0392b;"><span>Descuento:</span><span>-$${v.ajuste}</span></div>
+                        </div>` : ''}
                         <div style="display:flex; justify-content:space-between; align-items:center; background:#f4f6f7; border-radius:8px; padding:14px; margin-top:15px;">
                             <span style="font-size:15px; color:#2c3e50; font-weight:bold;">TOTAL</span>
                             <span style="font-size:22px; color:#27ae60; font-weight:900;">$${v.total}</span>
