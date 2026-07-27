@@ -287,35 +287,45 @@
                 <button class="btn-back" onclick="nav('page-dashboard')">← Inicio</button><h2>🏪 M2: Consignaciones</h2>
             </div>
         </div>
-        
-        <div class="section">
-            <h3 class="section-title">1. Gestión de Locales</h3>
-            <div class="grid-2">
-                <input type="text" id="m2-cli-nombre" placeholder="Nombre Comercial / Local">
-                <input type="text" id="m2-cli-tel" placeholder="Teléfono (WhatsApp)">
-            </div>
-            <div class="grid-1" style="margin-top:10px;">
-                <input type="text" id="m2-cli-domicilio" placeholder="Domicilio">
-            </div>
-            <button class="btn btn-success" onclick="m2_guardarCliente()">👤 Registrar Local</button>
-        </div>
-
-        <div class="section" style="padding: 10px 5px; background: transparent; border: none; box-shadow: none;">
-            <div style="background: #fff; padding: 15px; border-radius: 12px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                <h3 class="section-title">2. Planilla de Visita (Local)</h3>
-                <label>Seleccionar Local para abrir planilla:</label>
-                <select id="m2-cliente-select" onchange="m2_abrirPlanillaMaestra()"></select>
-            </div>
-            
-            <div id="m2-planilla-container" style="display:none; margin-top:10px;"></div>
-        </div>
 
         <div class="section">
-            <h3 class="section-title">3. Historial de Visitas</h3>
-            <label>Ver historial de:</label>
-            <select id="m2-historial-cliente" onchange="m2_renderHistorial()"></select>
-            <button class="btn btn-success" style="margin-top:10px;" onclick="m2_registrarPago(document.getElementById('m2-historial-cliente').value)">💰 Registrar Pago</button>
-            <div id="m2-historial-container" style="margin-top:15px;"></div>
+            <details class="familia-collapse">
+                <summary><span>➕ Gestión de Locales (agregar nuevo)</span></summary>
+                <div style="padding:12px;">
+                    <div class="grid-2">
+                        <input type="text" id="m2-cli-nombre" placeholder="Nombre Comercial / Local">
+                        <input type="text" id="m2-cli-tel" placeholder="Teléfono (WhatsApp)">
+                    </div>
+                    <div class="grid-1" style="margin-top:10px;">
+                        <input type="text" id="m2-cli-domicilio" placeholder="Domicilio">
+                    </div>
+                    <button class="btn btn-success" onclick="m2_guardarCliente()">👤 Registrar Local</button>
+                </div>
+            </details>
+        </div>
+
+        <div id="m2-listado-clientes-wrap">
+            <div class="section">
+                <h3 class="section-title">👥 Locales (ordenados por última visita — más vieja arriba)</h3>
+                <div id="m2-listado-clientes"></div>
+            </div>
+        </div>
+
+        <div id="m2-detalle-cliente" style="display:none;">
+            <div class="section" style="padding: 0 15px 10px 15px; background:transparent; border:none; box-shadow:none;">
+                <button class="btn btn-outline" style="margin-top:0;" onclick="m2_volverListadoClientes()">← Volver a la lista de Locales</button>
+            </div>
+
+            <div class="section" style="padding: 10px 5px; background: transparent; border: none; box-shadow: none;">
+                <select id="m2-cliente-select" style="display:none;" onchange="m2_abrirPlanillaMaestra()"></select>
+                <div id="m2-planilla-container" style="margin-top:10px;"></div>
+            </div>
+
+            <div class="section">
+                <h3 class="section-title">Historial de Visitas</h3>
+                <select id="m2-historial-cliente" style="display:none;" onchange="m2_renderHistorial()"></select>
+                <div id="m2-historial-container" style="margin-top:15px;"></div>
+            </div>
         </div>
     </div>
 
@@ -611,7 +621,15 @@
             if(!l.celdasOcultas) l.celdasOcultas = [];
             if(!l.costosEnvase) l.costosEnvase = {};
         });
-        db.clientes.forEach(c => { if(!c.ocultos) c.ocultos = []; });
+        db.clientes.forEach(c => {
+            if(!c.ocultos) c.ocultos = [];
+            if (c.ultimaVisita === undefined) {
+                // Compatibilidad: si ya tenía visitas cargadas antes de este cambio,
+                // inferimos la fecha de la última en vez de arrancar en blanco.
+                let visitas = db.historial_consignacion.filter(h => h.clienteId === c.id && h.tipo !== 'pago');
+                c.ultimaVisita = visitas.length > 0 ? visitas[visitas.length - 1].fecha : null;
+            }
+        });
         if (!db.conteos_pendientes) db.conteos_pendientes = {};
         if (!db.gastos) db.gastos = [];
         if (db.saldoInicialEfectivo === undefined) db.saldoInicialEfectivo = 0;
@@ -1568,6 +1586,85 @@
             sel.innerHTML += `<option value="${c.id}">${c.nombre}</option>`;
             selH.innerHTML += `<option value="${c.id}">${c.nombre}</option>`;
         });
+        document.getElementById('m2-listado-clientes-wrap').style.display = 'block';
+        document.getElementById('m2-detalle-cliente').style.display = 'none';
+        m2_renderListadoClientes();
+    }
+
+    // Parser chico de fechas "D/M/YYYY" para poder ordenar el listado de locales.
+    function m2_parsearFecha(str) {
+        if (!str) return null;
+        let partes = str.split('/');
+        if (partes.length !== 3) return null;
+        let dia = parseInt(partes[0]), mes = parseInt(partes[1]), anio = parseInt(partes[2]);
+        if (isNaN(dia) || isNaN(mes) || isNaN(anio)) return null;
+        return new Date(anio, mes - 1, dia);
+    }
+
+    function m2_renderListadoClientes() {
+        let cont = document.getElementById('m2-listado-clientes');
+        if (!cont) return;
+
+        let clientesOrdenados = (db.clientes || []).slice().sort((a, b) => {
+            let fa = a.ultimaVisita ? m2_parsearFecha(a.ultimaVisita) : null;
+            let fb = b.ultimaVisita ? m2_parsearFecha(b.ultimaVisita) : null;
+            if (!fa && !fb) return 0;
+            if (!fa) return -1; // nunca visitado: máxima prioridad, va arriba de todo
+            if (!fb) return 1;
+            return fa - fb; // más antigua primero
+        });
+
+        if (clientesOrdenados.length === 0) {
+            cont.innerHTML = '<p style="font-size:12px; color:#888; text-align:center;">Todavía no registraste ningún local. Usá "➕ Gestión de Locales" arriba.</p>';
+            return;
+        }
+
+        let html = '';
+        clientesOrdenados.forEach(c => {
+            let textoFecha = c.ultimaVisita ? c.ultimaVisita : 'Nunca visitado';
+            let colorFecha = c.ultimaVisita ? '#888' : 'var(--danger)';
+            html += `
+            <div class="card-item" style="border-left-color: var(--primary);">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div style="cursor:pointer; flex:1;" onclick="m2_abrirDetalleCliente('${c.id}')">
+                        <b style="font-size:14px;">${c.nombre}</b><br>
+                        <span style="font-size:11px; color:${colorFecha};">📅 Última visita: ${textoFecha}</span>
+                        <button onclick="event.stopPropagation(); m2_editarFechaVisita('${c.id}')" style="background:none; border:none; color:var(--info); font-size:12px; padding:0; margin-left:6px; cursor:pointer;">✏️</button>
+                    </div>
+                    <div style="text-align:right; cursor:pointer;" onclick="m2_abrirDetalleCliente('${c.id}')">
+                        ${c.deuda > 0 ? `<span style="font-size:12px; color:var(--danger); font-weight:bold;">Debe $${c.deuda}</span><br>` : ''}
+                        <span style="font-size:11px; color:var(--info);">Abrir →</span>
+                    </div>
+                </div>
+            </div>`;
+        });
+        cont.innerHTML = html;
+    }
+
+    function m2_abrirDetalleCliente(cid) {
+        document.getElementById('m2-cliente-select').value = cid;
+        document.getElementById('m2-historial-cliente').value = cid;
+        document.getElementById('m2-listado-clientes-wrap').style.display = 'none';
+        document.getElementById('m2-detalle-cliente').style.display = 'block';
+        m2_abrirPlanillaMaestra();
+        m2_renderHistorial();
+        window.scrollTo(0, 0);
+    }
+
+    function m2_volverListadoClientes() {
+        document.getElementById('m2-listado-clientes-wrap').style.display = 'block';
+        document.getElementById('m2-detalle-cliente').style.display = 'none';
+        m2_renderListadoClientes();
+    }
+
+    function m2_editarFechaVisita(cid) {
+        let c = db.clientes.find(x => x.id === cid);
+        if (!c) return;
+        let fechaStr = prompt(`Última visita a ${c.nombre} (formato DD/MM/AAAA):`, c.ultimaVisita || '');
+        if (fechaStr === null) return;
+        c.ultimaVisita = fechaStr.trim() || null;
+        saveDB();
+        m2_renderListadoClientes();
     }
 
     function m2_guardarCliente() {
@@ -1575,7 +1672,7 @@
         let tel = document.getElementById('m2-cli-tel').value;
         let dom = document.getElementById('m2-cli-domicilio').value;
         if(!n) return alert("⚠️ Nombre requerido");
-        db.clientes.push({ id: Date.now().toString(), nombre: n, telefono: tel, domicilio: dom, deuda: 0, ocultos: [] });
+        db.clientes.push({ id: Date.now().toString(), nombre: n, telefono: tel, domicilio: dom, deuda: 0, ocultos: [], ultimaVisita: null });
         saveDB(); initM2(); alert("✅ Local Registrado");
         document.getElementById('m2-cli-nombre').value = ''; document.getElementById('m2-cli-tel').value = ''; document.getElementById('m2-cli-domicilio').value = '';
     }
@@ -1667,6 +1764,10 @@
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:10px;">
                 <h4 style="margin:0; color:var(--primary);">Local: ${c.nombre}</h4>
                 <span style="font-size:11px; color:#666;">Deuda Ant: <b>$${c.deuda}</b></span>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px; font-size:11px; color:#888;">
+                <span>📅 Última visita: ${c.ultimaVisita || 'Nunca visitado'} <button onclick="m2_editarFechaVisita('${cid}')" style="background:none; border:none; color:var(--info); font-size:11px; padding:0; margin-left:4px; cursor:pointer;">✏️</button></span>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; font-size:12px; color:#555;">
@@ -2060,6 +2161,7 @@
         if (!huboMovimiento && !pendiente) return alert("⚠️ No anotaste ningún dato nuevo en la planilla.");
 
         c.deuda += debe;
+        c.ultimaVisita = new Date().toLocaleDateString();
 
         db.historial_consignacion.push({
             id: Date.now().toString(),
