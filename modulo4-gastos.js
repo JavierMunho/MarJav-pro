@@ -268,6 +268,27 @@ function m4_renderPendientes() {
     let localesConDeuda = (db.clientes || []).filter(c => (parseFloat(c.deuda) || 0) > 0);
     let totalDeudaConsignacion = localesConDeuda.reduce((s, c) => s + (parseFloat(c.deuda) || 0), 0);
 
+    // Stock distribuido en consignación, valorizado al precio de venta vigente en cada local
+    let stockPorArticulo = {}; // pid -> { cant, valor }
+    let localesConStock = 0;
+    (db.clientes || []).forEach(c => {
+        let stockCliente = db.stock_consignacion ? db.stock_consignacion[c.id] : null;
+        if (!stockCliente) return;
+        let tieneStock = false;
+        for (let pid in stockCliente) {
+            let s = stockCliente[pid];
+            if (!s || !s.cant || s.cant <= 0) continue;
+            tieneStock = true;
+            if (!stockPorArticulo[pid]) stockPorArticulo[pid] = { cant: 0, valor: 0 };
+            stockPorArticulo[pid].cant += s.cant;
+            stockPorArticulo[pid].valor += s.cant * (s.pV || 0);
+        }
+        if (tieneStock) localesConStock++;
+    });
+    let totalValorConsignacion = 0;
+    let cantidadArticulosDistintos = 0;
+    for (let pid in stockPorArticulo) { totalValorConsignacion += stockPorArticulo[pid].valor; cantidadArticulosDistintos++; }
+
     let filaPendiente = (icono, titulo, cantidad, total, filasDetalle) => {
         let colorMonto = cantidad === 0 ? '#aaa' : 'var(--accent)';
         return `
@@ -298,12 +319,41 @@ function m4_renderPendientes() {
         </div>`
     ).join('') || '<p style="font-size:11px; color:#999;">Nada pendiente.</p>';
 
+    // Detalle de stock valorizado, con el mismo formato de tabla que usan las planillas
+    // (agrupado por familia, con fila de encabezado de categoría).
+    let filasHtmlStock = "";
+    (db.familias || []).forEach(f => {
+        let prods = (db.productos || []).filter(p => p.familia === f && stockPorArticulo[p.id]);
+        if (prods.length === 0) return;
+        let filasFam = prods.map(p => {
+            let d = stockPorArticulo[p.id];
+            return `<tr>
+                <td style="text-align:left; padding:6px 4px; border-bottom:1px solid #eee; font-size:12px;">${p.nombre}</td>
+                <td style="text-align:center; padding:6px 4px; border-bottom:1px solid #eee; font-size:12px;">${d.cant}</td>
+                <td style="text-align:right; padding:6px 4px; border-bottom:1px solid #eee; font-size:12px; font-weight:bold;">$${d.valor.toFixed(0)}</td>
+            </tr>`;
+        }).join('');
+        filasHtmlStock += `<tr class="fam-row"><td colspan="3" style="background:#d1d5db; color:#333; font-weight:bold; text-align:center; padding:6px; font-size:11px; text-transform:uppercase;">${f}</td></tr>${filasFam}`;
+    });
+
+    let detalleStockConsignacion = cantidadArticulosDistintos > 0
+        ? `<div class="table-responsive"><table class="tabla-consignacion" style="width:100%;">
+            <thead><tr>
+                <th style="text-align:left; padding:6px 4px; font-size:10px;">Producto</th>
+                <th style="padding:6px 4px; font-size:10px;">Cant.</th>
+                <th style="text-align:right; padding:6px 4px; font-size:10px;">Valor</th>
+            </tr></thead>
+            <tbody>${filasHtmlStock}</tbody>
+           </table></div>`
+        : '<p style="font-size:11px; color:#999;">No hay stock distribuido en consignación.</p>';
+
     document.getElementById('m4-pendientes-container').innerHTML = `
         <div style="background:#fff; border:1px solid #eee; border-radius:12px; padding:12px; margin-top:12px;">
             <div style="font-size:12px; font-weight:bold; color:#856404; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">⏳ Pendientes</div>
             ${filaPendiente('📦', 'Pedidos sin cobrar', pedidosSinCobrar.length, totalSinCobrar, detalleSinCobrar)}
             ${filaPendiente('🚚', 'Pedidos sin entregar', pedidosSinEntregar.length, totalSinEntregar, detalleSinEntregar)}
             ${filaPendiente('🏪', 'Deuda en consignación', localesConDeuda.length, totalDeudaConsignacion, detalleConsignacion)}
+            ${filaPendiente('🏷️', 'Stock en consignación (valorizado a venta)', localesConStock, totalValorConsignacion, detalleStockConsignacion)}
         </div>
     `;
 }
