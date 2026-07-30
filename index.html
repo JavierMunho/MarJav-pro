@@ -337,8 +337,12 @@
             </div>
         </div>
         
-        <div class="section">
+        <div class="section" id="m3-form-armado">
             <h3 class="section-title">1. Armar Solicitud / Remito</h3>
+            <div id="m3-editando-banner" style="display:none; background:#fff3cd; border:1px solid #ffe69c; color:#856404; padding:10px; border-radius:8px; margin-bottom:10px; font-size:12px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <span>✏️ Editando remito existente — los cambios reemplazan al original.</span>
+                <button onclick="m3_cancelarEdicion()" style="background:none; border:1px solid #856404; color:#856404; border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer; flex-shrink:0;">Cancelar</button>
+            </div>
             <div class="grid-2">
                 <div><label>Fecha:</label><input type="date" id="m3-fecha"></div>
                 <div><label>Lista a Aplicar:</label><select id="m3-lista-select" onchange="m3_renderSelectorProductos()"></select></div>
@@ -373,7 +377,7 @@
                     <h3 style="margin:0; color:var(--primary); font-size: 18px;">Total Final: $<span id="m3-total">0</span></h3>
                 </div>
             </div>
-            <button class="btn btn-accent" onclick="m3_guardarRemito()">💾 Generar Solicitud / Remito</button>
+            <button class="btn btn-accent" id="m3-btn-guardar" onclick="m3_guardarRemito()">💾 Generar Solicitud / Remito</button>
         </div>
 
         <div class="section" style="background: transparent; border: none; padding: 0; box-shadow: none;">
@@ -2234,6 +2238,7 @@
     // MÓDULO 3: VENTAS Y REMITOS 
     // ==========================================
     let carrito_venta = [];
+    let m3_editandoVentaId = null;
     
     function initM3() {
         document.getElementById('m3-fecha').valueAsDate = new Date();
@@ -2341,14 +2346,61 @@
         let ajuste = parseFloat(document.getElementById('m3-ajuste').value) || 0;
         let totalFinal = parseFloat(document.getElementById('m3-total').innerText) || 0;
 
-        let remito = {
-            id: Date.now().toString(), fecha: f, cliente: c, items: carrito_venta,
-            subtotal: subtotal, ajuste: ajuste, total: totalFinal, estado: 'Preparación', pago: 'Pendiente'
-        };
-        db.ventas.unshift(remito);
-        saveDB(); carrito_venta = []; m3_renderCarrito(); document.getElementById('m3-cliente').value='';
+        if (m3_editandoVentaId) {
+            let existente = db.ventas.find(v => v.id === m3_editandoVentaId);
+            if (existente) {
+                existente.fecha = f;
+                existente.cliente = c;
+                existente.items = carrito_venta;
+                existente.subtotal = subtotal;
+                existente.ajuste = ajuste;
+                existente.total = totalFinal;
+                // Estado, pago y medioPago se mantienen como estaban; se editan desde las etiquetas del pedido.
+                saveDB();
+                alert("✅ Remito actualizado.");
+            }
+            m3_cancelarEdicion();
+        } else {
+            let remito = {
+                id: Date.now().toString(), fecha: f, cliente: c, items: carrito_venta,
+                subtotal: subtotal, ajuste: ajuste, total: totalFinal, estado: 'Preparación', pago: 'Pendiente'
+            };
+            db.ventas.unshift(remito);
+            saveDB(); carrito_venta = []; m3_renderCarrito(); document.getElementById('m3-cliente').value='';
+            document.getElementById('m3-ajuste').value = '0';
+            alert("✅ Remito Guardado.");
+        }
+        m3_renderPedidos();
+    }
+
+    // Carga un remito ya guardado en el formulario de armado para poder agregar,
+    // quitar o cambiar cantidades de productos, sin tener que rehacerlo de cero.
+    function m3_editarVenta(id) {
+        let v = db.ventas.find(x => x.id === id);
+        if (!v) return;
+
+        m3_editandoVentaId = id;
+        carrito_venta = JSON.parse(JSON.stringify(v.items || []));
+
+        document.getElementById('m3-fecha').value = v.fecha || '';
+        document.getElementById('m3-cliente').value = v.cliente || '';
+        document.getElementById('m3-ajuste').value = v.ajuste || 0;
+
+        document.getElementById('m3-editando-banner').style.display = 'flex';
+        document.getElementById('m3-btn-guardar').innerText = '💾 Guardar Cambios del Remito';
+
+        m3_renderCarrito();
+        document.getElementById('m3-form-armado').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function m3_cancelarEdicion() {
+        m3_editandoVentaId = null;
+        carrito_venta = [];
+        document.getElementById('m3-cliente').value = '';
         document.getElementById('m3-ajuste').value = '0';
-        alert("✅ Remito Guardado."); m3_renderPedidos();
+        document.getElementById('m3-editando-banner').style.display = 'none';
+        document.getElementById('m3-btn-guardar').innerText = '💾 Generar Solicitud / Remito';
+        m3_renderCarrito();
     }
 
     function m3_renderPedidos() {
@@ -2377,6 +2429,7 @@
                 <div class="export-actions">
                     <button class="btn btn-small btn-outline" style="margin-top:0;" onclick="exportarPDF('remito', '${v.id}')">📄 PDF</button>
                     <button class="btn btn-small btn-success" style="margin-top:0;" onclick="generarImagenRemito('${v.id}')">📲 Enviar por WhatsApp</button>
+                    <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--info); color:var(--info);" onclick="m3_editarVenta('${v.id}')">✏️ Editar</button>
                     <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--danger); color:var(--danger);" onclick="m3_borrarVenta('${v.id}')">🗑️ Borrar</button>
                 </div>
             </div>`;
