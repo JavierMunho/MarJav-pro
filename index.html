@@ -1893,7 +1893,7 @@
                             <input type="hidden" id="m2-pactual-${p.id}" value="${pActual}">
                         </td>
                         <td id="m2-ant-${p.id}" style="color:#666;">${antMostrado}</td>
-                        <td style="color:#888; font-style:italic;">${contMostrado}</td>
+                        <td style="color:#888; font-style:italic;">${contMostrado} <button onclick="m2_editarConteoProducto('${cid}', '${p.id}')" style="background:none; border:none; color:var(--info); font-size:11px; padding:0; cursor:pointer;">✏️</button></td>
                         <td id="m2-vend-${p.id}" style="color:var(--danger); font-weight:bold; background:#fdf2f2;">${vendMostrado}</td>
                         <td><input type="number" class="input-cons" id="m2-repo-${p.id}" oninput="m2_actualizarFinPendiente('${p.id}', ${contMostrado})" placeholder="-"></td>
                         <td id="m2-fin-${p.id}" style="color:var(--success); font-weight:bold; background:#f2fdf2;">${contMostrado}</td>
@@ -2134,6 +2134,34 @@
         m2_abrirPlanillaMaestra();
     }
 
+    // Corrige el conteo de UN producto puntual dentro de un conteo ya guardado como
+    // pendiente, sin tener que descartar y volver a contar todo el local de nuevo.
+    function m2_editarConteoProducto(cid, pid) {
+        let pendiente = db.conteos_pendientes[cid];
+        if (!pendiente || !pendiente.items[pid]) return;
+        let item = pendiente.items[pid];
+        let p = db.productos.find(x => x.id === pid);
+
+        let nuevoContStr = prompt(`Corregir cantidad contada de ${p ? p.nombre : ''}:\n(Stock anterior: ${item.ant})`, item.cont);
+        if (nuevoContStr === null) return;
+        let nuevoCont = parseInt(nuevoContStr);
+        if (isNaN(nuevoCont) || nuevoCont < 0) return alert("⚠️ Ingresá un número válido.");
+
+        let nuevoVend = item.ant - nuevoCont;
+        if (nuevoVend < 0) nuevoVend = 0;
+
+        // Ajustamos el total a cobrar: sacamos lo que aportaba el valor viejo y sumamos el nuevo.
+        pendiente.totalVendido -= (item.vend * item.pCobro);
+        pendiente.totalVendido += (nuevoVend * item.pCobro);
+
+        item.cont = nuevoCont;
+        item.vend = nuevoVend;
+
+        saveDB();
+        alert("✅ Conteo corregido.");
+        m2_abrirPlanillaMaestra();
+    }
+
     // ---------- PASO 2 (o único paso si se hace todo junto): Reponer y cerrar el ciclo ----------
     function m2_confirmarReposicion(cid) {
         let c = db.clientes.find(x => x.id === cid);
@@ -2228,6 +2256,10 @@
         
         let hist = db.historial_consignacion.filter(h => h.clienteId === cid).reverse();
         if(hist.length === 0) { cont.innerHTML = '<p style="text-align:center; color:#888; font-size:12px;">Sin visitas previas.</p>'; return; }
+
+        // La visita más reciente es la primera visita-tipo del array (ya sin invertir, buscamos desde el final del original)
+        let visitasCliente = db.historial_consignacion.filter(h => h.clienteId === cid && h.tipo !== 'pago');
+        let idUltimaVisita = visitasCliente.length > 0 ? visitasCliente[visitasCliente.length - 1].id : null;
         
         let html = "";
         hist.forEach(h => {
@@ -2243,10 +2275,12 @@
                     </div>
                 </div>`;
             } else {
+                let esLaUltima = h.id === idUltimaVisita;
                 html += `
                 <div class="card-item" style="border-left-color: var(--primary);">
                     <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
                         <b style="color:var(--primary);">📅 Visita ${h.fecha}</b>
+                        ${esLaUltima ? '<span style="font-size:9px; color:#888; background:#f0f0f0; padding:2px 6px; border-radius:10px;">más reciente</span>' : ''}
                     </div>
                     
                     <div style="background:#f8f9fa; padding:8px; border-radius:6px; font-size:12px; margin-top:8px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;">
@@ -2259,11 +2293,72 @@
                     <div class="export-actions" style="margin-top:10px;">
                         <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--primary); color:var(--primary);" onclick="exportarPDFConsignacionFoto('${h.id}')">📄 PDF</button>
                         <button class="btn btn-small btn-success" style="margin-top:0;" onclick="exportarImagenConsignacionHistorial('${h.id}')">📲 WhatsApp</button>
+                        ${esLaUltima ? `<button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--accent); color:var(--accent);" onclick="m2_corregirVisitaCerrada('${h.id}')">✏️ Corregir</button>` : ''}
                     </div>
                 </div>`;
             }
         });
         cont.innerHTML = html;
+    }
+
+    // Corrige un producto puntual de la visita YA CERRADA más reciente de un local.
+    // Recalcula el total vendido, la deuda generada, y ajusta el stock actual y la
+    // deuda del cliente por la diferencia. Solo se permite en la última visita para
+    // no desordenar el stock de visitas posteriores.
+    function m2_corregirVisitaCerrada(historyId) {
+        let h = db.historial_consignacion.find(x => x.id === historyId);
+        if (!h) return;
+        let c = db.clientes.find(x => x.id === h.clienteId);
+        if (!c) return;
+
+        let visitasCliente = db.historial_consignacion.filter(x => x.clienteId === h.clienteId && x.tipo !== 'pago');
+        let esLaUltima = visitasCliente.length > 0 && visitasCliente[visitasCliente.length - 1].id === historyId;
+        if (!esLaUltima) return alert("⚠️ Solo se puede corregir la visita más reciente de este local (hubo visitas posteriores que ya usan estos datos como base).");
+
+        if (!h.planilla || h.planilla.length === 0) return alert("⚠️ Esta visita no tiene productos para corregir.");
+
+        let listado = h.planilla.map((item, idx) => `${idx + 1}. ${item.nom} — Contado: ${item.cont}, Repuesto: ${item.repo || 0}`).join('\n');
+        let seleccion = prompt(`¿Qué producto querés corregir? Escribí el número:\n\n${listado}`, "");
+        if (seleccion === null) return;
+        let idx = parseInt(seleccion) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= h.planilla.length) return alert("⚠️ Número inválido.");
+
+        let item = h.planilla[idx];
+        let nuevoContStr = prompt(`Corregir "Contado" de ${item.nom}:\n(Stock anterior: ${item.ant})`, item.cont);
+        if (nuevoContStr === null) return;
+        let nuevoCont = parseInt(nuevoContStr);
+        if (isNaN(nuevoCont) || nuevoCont < 0) return alert("⚠️ Ingresá un número válido.");
+
+        let nuevoRepoStr = prompt(`Corregir "Repuesto" de ${item.nom}:`, item.repo || 0);
+        if (nuevoRepoStr === null) return;
+        let nuevoRepo = parseInt(nuevoRepoStr) || 0;
+
+        let nuevoVend = item.ant - nuevoCont;
+        if (nuevoVend < 0) nuevoVend = 0;
+        let nuevoFin = nuevoCont + nuevoRepo;
+
+        item.cont = String(nuevoCont);
+        item.repo = String(nuevoRepo);
+        item.vend = nuevoVend;
+        item.fin = nuevoFin;
+
+        // Recalculamos el total vendido de toda la visita a partir de la planilla corregida
+        let nuevoVendidoTotal = h.planilla.reduce((s, i) => s + (i.vend * i.pV), 0);
+        let deudaAnteriorDeEstaVisita = h.debeGenerado;
+        let nuevoDebe = (nuevoVendidoTotal - (h.descuento || 0)) - h.cobrado;
+
+        h.vendidoTotal = nuevoVendidoTotal;
+        h.debeGenerado = nuevoDebe;
+
+        // Ajustamos la deuda actual del cliente por la diferencia, y el stock actual del producto
+        c.deuda += (nuevoDebe - deudaAnteriorDeEstaVisita);
+        if (db.stock_consignacion[h.clienteId] && db.stock_consignacion[h.clienteId][item.pid]) {
+            db.stock_consignacion[h.clienteId][item.pid].cant = nuevoFin;
+        }
+
+        saveDB();
+        alert("✅ Visita corregida. Se actualizó la deuda del local y el stock actual.");
+        m2_renderHistorial();
     }
 
     // ==========================================
