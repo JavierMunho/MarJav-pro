@@ -328,8 +328,9 @@
                         <input type="text" id="m2-cli-nombre" placeholder="Nombre Comercial / Local">
                         <input type="text" id="m2-cli-tel" placeholder="Teléfono (WhatsApp)">
                     </div>
-                    <div class="grid-1" style="margin-top:10px;">
+                    <div class="grid-2" style="margin-top:10px;">
                         <input type="text" id="m2-cli-domicilio" placeholder="Domicilio">
+                        <input type="text" id="m2-cli-zona" placeholder="Zona / Localidad">
                     </div>
                     <button class="btn btn-success" onclick="m2_guardarCliente()">👤 Registrar Local</button>
                 </div>
@@ -665,6 +666,7 @@
                 let visitas = db.historial_consignacion.filter(h => h.clienteId === c.id && h.tipo !== 'pago');
                 c.ultimaVisita = visitas.length > 0 ? visitas[visitas.length - 1].fecha : null;
             }
+            if (c.zona === undefined) c.zona = '';
         });
         if (!db.conteos_pendientes) db.conteos_pendientes = {};
         if (!db.gastos) db.gastos = [];
@@ -1655,24 +1657,43 @@
             return;
         }
 
-        let html = '';
+        // Agrupamos por zona (manteniendo, dentro de cada zona, el orden por última visita ya calculado).
+        // Los locales sin zona cargada quedan en un grupo aparte al final.
+        let grupos = {};
+        let ordenZonas = [];
         clientesOrdenados.forEach(c => {
-            let textoFecha = c.ultimaVisita ? c.ultimaVisita : 'Nunca visitado';
-            let colorFecha = c.ultimaVisita ? '#888' : 'var(--danger)';
-            html += `
-            <div class="card-item" style="border-left-color: var(--primary);">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                    <div style="cursor:pointer; flex:1;" onclick="m2_abrirDetalleCliente('${c.id}')">
-                        <b style="font-size:14px;">${c.nombre}</b><br>
-                        <span style="font-size:11px; color:${colorFecha};">📅 Última visita: ${textoFecha}</span>
-                        <button onclick="event.stopPropagation(); m2_editarFechaVisita('${c.id}')" style="background:none; border:none; color:var(--info); font-size:12px; padding:0; margin-left:6px; cursor:pointer;">✏️</button>
+            let zonaKey = (c.zona && c.zona.trim() !== '') ? c.zona.trim() : '__SIN_ZONA__';
+            if (!grupos[zonaKey]) { grupos[zonaKey] = []; ordenZonas.push(zonaKey); }
+            grupos[zonaKey].push(c);
+        });
+        ordenZonas.sort((a, b) => {
+            if (a === '__SIN_ZONA__') return 1;
+            if (b === '__SIN_ZONA__') return -1;
+            return a.localeCompare(b);
+        });
+
+        let html = '';
+        ordenZonas.forEach(zonaKey => {
+            let etiquetaZona = zonaKey === '__SIN_ZONA__' ? 'Sin zona asignada' : zonaKey;
+            html += `<div style="background:#e8f4f8; color:#0c5460; font-weight:bold; font-size:12px; padding:8px 12px; border-radius:8px; margin:12px 0 8px 0; text-transform:uppercase; letter-spacing:0.5px;">📍 ${etiquetaZona}</div>`;
+            grupos[zonaKey].forEach(c => {
+                let textoFecha = c.ultimaVisita ? c.ultimaVisita : 'Nunca visitado';
+                let colorFecha = c.ultimaVisita ? '#888' : 'var(--danger)';
+                html += `
+                <div class="card-item" style="border-left-color: var(--primary);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                        <div style="cursor:pointer; flex:1;" onclick="m2_abrirDetalleCliente('${c.id}')">
+                            <b style="font-size:14px;">${c.nombre}</b><br>
+                            <span style="font-size:11px; color:${colorFecha};">📅 Última visita: ${textoFecha}</span>
+                            <button onclick="event.stopPropagation(); m2_editarFechaVisita('${c.id}')" style="background:none; border:none; color:var(--info); font-size:12px; padding:0; margin-left:6px; cursor:pointer;">✏️</button>
+                        </div>
+                        <div style="text-align:right; cursor:pointer;" onclick="m2_abrirDetalleCliente('${c.id}')">
+                            ${c.deuda > 0 ? `<span style="font-size:12px; color:var(--danger); font-weight:bold;">Debe $${c.deuda}</span><br>` : ''}
+                            <span style="font-size:11px; color:var(--info);">Abrir →</span>
+                        </div>
                     </div>
-                    <div style="text-align:right; cursor:pointer;" onclick="m2_abrirDetalleCliente('${c.id}')">
-                        ${c.deuda > 0 ? `<span style="font-size:12px; color:var(--danger); font-weight:bold;">Debe $${c.deuda}</span><br>` : ''}
-                        <span style="font-size:11px; color:var(--info);">Abrir →</span>
-                    </div>
-                </div>
-            </div>`;
+                </div>`;
+            });
         });
         cont.innerHTML = html;
     }
@@ -1707,10 +1728,11 @@
         let n = document.getElementById('m2-cli-nombre').value;
         let tel = document.getElementById('m2-cli-tel').value;
         let dom = document.getElementById('m2-cli-domicilio').value;
+        let zona = document.getElementById('m2-cli-zona').value;
         if(!n) return alert("⚠️ Nombre requerido");
-        db.clientes.push({ id: Date.now().toString(), nombre: n, telefono: tel, domicilio: dom, deuda: 0, ocultos: [], ultimaVisita: null });
+        db.clientes.push({ id: Date.now().toString(), nombre: n, telefono: tel, domicilio: dom, zona: zona, deuda: 0, ocultos: [], ultimaVisita: null });
         saveDB(); initM2(); alert("✅ Local Registrado");
-        document.getElementById('m2-cli-nombre').value = ''; document.getElementById('m2-cli-tel').value = ''; document.getElementById('m2-cli-domicilio').value = '';
+        document.getElementById('m2-cli-nombre').value = ''; document.getElementById('m2-cli-tel').value = ''; document.getElementById('m2-cli-domicilio').value = ''; document.getElementById('m2-cli-zona').value = '';
     }
 
     function m2_editarCliente(cid) {
@@ -1720,11 +1742,15 @@
         if (tel === null) return;
         let dom = prompt(`Domicilio de ${c.nombre}:`, c.domicilio || "");
         if (dom === null) return;
+        let zona = prompt(`Zona / Localidad de ${c.nombre}:`, c.zona || "");
+        if (zona === null) return;
         c.telefono = tel;
         c.domicilio = dom;
+        c.zona = zona;
         saveDB();
         alert("✅ Datos del local actualizados.");
         if (document.getElementById('m2-cliente-select').value === cid) m2_abrirPlanillaMaestra();
+        m2_renderListadoClientes();
     }
 
     function m2_abrirWhatsapp(cid) {
@@ -1810,6 +1836,7 @@
                 <div>
                     📞 ${c.telefono && c.telefono.trim() !== "" ? c.telefono : '<i>Sin teléfono</i>'}
                     ${c.domicilio && c.domicilio.trim() !== "" ? ' | 📍 ' + c.domicilio : ''}
+                    ${c.zona && c.zona.trim() !== "" ? ' | 🗺️ ' + c.zona : ''}
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
                     <button onclick="m2_abrirWhatsapp('${cid}')" style="background:#25D366; color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">💬 WhatsApp</button>
