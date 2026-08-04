@@ -275,6 +275,7 @@ function m1_verImpactoListas(idx) {
 
 function m1_aplicarPreciosProveedor() {
     let aplicados = 0;
+    let idsAplicados = [];
     m1_resultadosRevisionPrecios.forEach((r, idx) => {
         let check = document.getElementById(`m1-rev-check-${idx}`);
         if (!check || !check.checked) return;
@@ -283,18 +284,71 @@ function m1_aplicarPreciosProveedor() {
         if (isNaN(nuevoPrecio) || nuevoPrecio <= 0) return;
 
         let producto = db.productos.find(p => p.id === r.id);
-        if (producto) { producto.costo = nuevoPrecio; aplicados++; }
+        if (producto) { producto.costo = nuevoPrecio; aplicados++; idsAplicados.push(producto.id); }
     });
 
     if (aplicados === 0) return alert("⚠️ No seleccionaste ningún producto para actualizar.");
 
     saveDB();
-    alert(`✅ Se actualizaron ${aplicados} precio(s) base. Todas las listas recalculan solas a partir de estos costos (salvo los precios que hayas fijado a mano en alguna lista puntual).`);
-    document.getElementById('m1-revision-precios').innerHTML = '';
+
+    // Revisamos si algún precio fijado a mano quedó corto de margen con el costo nuevo.
+    let alertasMargen = [];
+    idsAplicados.forEach(pid => {
+        let producto = db.productos.find(p => p.id === pid);
+        if (!producto) return;
+        (db.listas || []).forEach(l => {
+            if (l.ocultos && l.ocultos.includes(pid)) return;
+            (l.columnas || []).forEach(c => {
+                if ((producto.esUnidad && c !== 'unidad') || (!producto.esUnidad && c === 'unidad')) return;
+                let keyCelda = `${pid}_${c}`;
+                if (l.celdasOcultas && l.celdasOcultas.includes(keyCelda)) return;
+                let keyPres = `${l.id}_${pid}_${c}`;
+                let manual = db.precios_manuales[keyPres];
+                if (manual === undefined) return; // no es precio fijo: ya se actualizó solo, no hace falta avisar
+
+                let colName = (l.nombresCols && l.nombresCols[c]) ? l.nombresCols[c] : c;
+                let nombrePres = db.pres_manuales[keyPres] || colName;
+                let costoEnvase = (l.costosEnvase && l.costosEnvase[c]) ? l.costosEnvase[c] : 0;
+                let recomendado = calcularPrecioBase(producto.costo, c, producto.esUnidad, l.margen, nombrePres, costoEnvase);
+
+                if (recomendado > manual) {
+                    alertasMargen.push({ lista: l.nombre, producto: producto.nombre, presentacion: nombrePres, actual: manual, recomendado: recomendado, dif: recomendado - manual });
+                }
+            });
+        });
+    });
+
     document.getElementById('m1-texto-proveedor').value = '';
     document.getElementById('m1-pdf-proveedor').value = '';
     m1_resultadosRevisionPrecios = [];
     if (typeof initM1 === 'function') initM1();
     let listaSel = document.getElementById('m1-lista-select');
     if (listaSel && listaSel.value && typeof m1_renderMatrizLista === 'function') m1_renderMatrizLista(true);
+
+    if (alertasMargen.length > 0) {
+        m1_mostrarAlertaMargen(alertasMargen, aplicados);
+    } else {
+        document.getElementById('m1-revision-precios').innerHTML = '';
+        alert(`✅ Se actualizaron ${aplicados} precio(s) base. Todas las listas recalculan solas a partir de estos costos (salvo los precios que hayas fijado a mano en alguna lista puntual — y en este caso ninguno quedó corto de margen).`);
+    }
+}
+
+// Muestra, después de aplicar los costos nuevos, SOLO los precios fijados a mano que
+// quedaron por debajo del margen esperado — para responder directo "¿qué tengo que
+// tocar en mis listas de venta para no perder margen?"
+function m1_mostrarAlertaMargen(alertas, aplicados) {
+    alertas.sort((a, b) => b.dif - a.dif);
+    let filas = alertas.map(a => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:12px;">
+            <span>${a.lista} — ${a.producto} <span style="color:#999;">(${a.presentacion})</span></span>
+            <span style="white-space:nowrap; margin-left:8px;">$${a.actual} → <b style="color:var(--danger);">$${a.recomendado}</b></span>
+        </div>`).join('');
+
+    document.getElementById('m1-revision-precios').innerHTML = `
+        <div style="background:#fdf2f2; border:1px solid #f5c6cb; border-radius:10px; padding:14px;">
+            <b style="color:var(--danger); font-size:13px;">⚠️ ${alertas.length} precio(s) fijado(s) a mano quedaron cortos de margen</b>
+            <p style="font-size:11px; color:#555; margin:8px 0;">Ya actualizamos ${aplicados} costo(s) base. Estos precios de venta están fijados a mano en sus listas y, con el costo nuevo, ya no te dejan el margen configurado para esa lista — te conviene subirlos:</p>
+            ${filas}
+            <p style="font-size:10px; color:#888; margin-top:8px;">Para actualizarlos, entrá a cada lista (Módulo 1 → Editar) y cambiá el precio de esa celda puntual.</p>
+        </div>`;
 }
