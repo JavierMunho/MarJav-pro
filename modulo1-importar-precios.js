@@ -227,20 +227,27 @@ function m1_verImpactoListas(idx) {
 
             let precioActualCalc = calcularPrecioBase(r.costoActual, c, producto.esUnidad, l.margen, nombrePres, costoEnvase);
             let precioNuevoCalc = calcularPrecioBase(nuevoCosto, c, producto.esUnidad, l.margen, nombrePres, costoEnvase);
-            let precioActual = manual !== undefined ? manual : precioActualCalc;
-            let precioNuevo = manual !== undefined ? manual : precioNuevoCalc;
+            let esManual = manual !== undefined;
+            let precioActual = esManual ? manual : precioActualCalc;
 
-            let variacionPct = precioActual > 0 ? ((precioNuevo - precioActual) / precioActual * 100) : 0;
+            // Para las celdas fijadas a mano, "precioNuevoCalc" es lo que SERÍA si se recalculara
+            // con el costo nuevo — no se aplica solo, pero el usuario lo quiere ver para decidir
+            // si actualiza también ese precio fijo.
+            let variacionPct = precioActual > 0 ? ((precioNuevoCalc - precioActual) / precioActual * 100) : 0;
             let esAumentoFuerte = variacionPct >= 15;
             if (esAumentoFuerte) huboAlerta = true;
             let colorFila = esAumentoFuerte ? 'background:#fdf2f2;' : '';
             let colorVar = esAumentoFuerte ? 'var(--danger)' : (variacionPct > 0 ? '#e67e22' : (variacionPct < 0 ? 'var(--success)' : '#888'));
 
+            let celdaNuevo = esManual
+                ? `$${manual} <span style="display:block; font-size:9px; color:#888; font-weight:normal;">🔒 fijo — recalculado sería $${precioNuevoCalc}</span>`
+                : `$${precioNuevoCalc}`;
+
             filasHtml += `<tr style="${colorFila}">
-                <td style="text-align:left; padding:4px; font-size:11px;">${l.nombre}${manual !== undefined ? ' <span title="Precio fijado a mano en esta lista: no se mueve solo" style="color:#e67e22;">🔒</span>' : ''}</td>
+                <td style="text-align:left; padding:4px; font-size:11px;">${l.nombre}${esManual ? ' <span title="Precio fijado a mano en esta lista: no se mueve solo" style="color:#e67e22;">🔒</span>' : ''}</td>
                 <td style="text-align:center; padding:4px; font-size:11px;">${nombrePres}</td>
                 <td style="text-align:center; padding:4px; font-size:11px; color:#888;">$${precioActual}</td>
-                <td style="text-align:center; padding:4px; font-size:11px; font-weight:bold;">$${precioNuevo}</td>
+                <td style="text-align:center; padding:4px; font-size:11px; font-weight:bold;">${celdaNuevo}</td>
                 <td style="text-align:center; padding:4px; font-size:11px; font-weight:bold; color:${colorVar};">${variacionPct >= 0 ? '+' : ''}${variacionPct.toFixed(0)}%</td>
             </tr>`;
         });
@@ -250,7 +257,7 @@ function m1_verImpactoListas(idx) {
         cont.innerHTML = '<p style="font-size:11px; color:#999;">Este producto no está visible en ninguna de tus listas todavía.</p>';
     } else {
         let aviso = huboAlerta ? '<p style="font-size:11px; color:var(--danger); font-weight:bold; margin:0 0 6px 0;">⚠️ Hay presentaciones con 15% o más de aumento — revisalas antes de aplicar.</p>' : '';
-        let notaCandado = '<p style="font-size:10px; color:#999; margin:6px 0 0 0;">🔒 = precio fijado a mano en esa lista puntual: no se va a mover aunque cambies el costo base.</p>';
+        let notaCandado = '<p style="font-size:10px; color:#999; margin:6px 0 0 0;">🔒 = precio fijado a mano en esa lista puntual: no se va a mover solo al aplicar el costo nuevo, aunque acá te mostramos cuánto sería si lo recalcularas. Si querés actualizarlo también, hacelo a mano en el editor de esa lista.</p>';
         cont.innerHTML = `${aviso}<div class="table-responsive"><table style="width:100%; border-collapse:collapse;">
             <thead><tr>
                 <th style="text-align:left; font-size:10px; padding:4px;">Lista</th>
