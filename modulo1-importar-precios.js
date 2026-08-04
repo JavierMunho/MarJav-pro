@@ -158,9 +158,9 @@ function m1_renderRevisionPrecios(resultados) {
         return;
     }
 
-    let html = `<p style="font-size:12px; color:#555;">Se encontraron <b>${resultados.length}</b> producto(s). El precio "Nuevo" es una sugerencia (el valor más parecido al que ya tenías) — revisalo, editalo si hace falta, y confirmá con el check cuáles aplicar:</p>
+    let html = `<p style="font-size:12px; color:#555;">Se encontraron <b>${resultados.length}</b> producto(s). El precio "Nuevo" es una sugerencia (el valor más parecido al que ya tenías) — revisalo, editalo si hace falta, y confirmá con el check cuáles aplicar. Si subió mucho, tocá "👁️ Ver impacto" antes de aplicar para ver cómo queda en cada lista.</p>
     <div class="table-responsive"><table>
-        <thead><tr><th>Producto</th><th>Actual</th><th>Nuevo</th><th>✓</th></tr></thead>
+        <thead><tr><th>Producto</th><th>Actual</th><th>Nuevo</th><th>✓</th><th></th></tr></thead>
         <tbody>`;
 
     resultados.forEach((r, idx) => {
@@ -173,12 +173,97 @@ function m1_renderRevisionPrecios(resultados) {
             <td style="font-size:11px; color:#888;">$${r.costoActual}</td>
             <td><input type="number" class="input-sm" id="m1-rev-precio-${idx}" value="${r.costoSugerido}" style="${colorTexto} font-weight:bold;"></td>
             <td><input type="checkbox" id="m1-rev-check-${idx}" ${cambio ? 'checked' : ''} style="width:18px; height:18px;"></td>
+            <td><button onclick="m1_verImpactoListas(${idx})" style="background:none; border:1px solid var(--info); color:var(--info); border-radius:6px; padding:5px 8px; font-size:10px; cursor:pointer; white-space:nowrap;">👁️ Impacto</button></td>
+        </tr>
+        <tr id="m1-impacto-fila-${idx}" style="display:none;">
+            <td colspan="5" style="padding:8px; background:#f8f9fa;"><div id="m1-impacto-${idx}"></div></td>
         </tr>`;
     });
 
     html += `</tbody></table></div>
     <button class="btn btn-success" onclick="m1_aplicarPreciosProveedor()">✅ Aplicar Precios Seleccionados</button>`;
     cont.innerHTML = html;
+}
+
+// Muestra, para un producto de la revisión, cómo quedaría el precio final en CADA
+// lista (por cada presentación) si se aplica el precio "Nuevo" que está cargado
+// en ese momento — así se puede ver el impacto antes de confirmar nada.
+function m1_verImpactoListas(idx) {
+    let r = m1_resultadosRevisionPrecios[idx];
+    if (!r) return;
+
+    let fila = document.getElementById(`m1-impacto-fila-${idx}`);
+    let cont = document.getElementById(`m1-impacto-${idx}`);
+    if (!fila || !cont) return;
+
+    // Si ya está abierta, la cerramos (funciona como toggle)
+    if (fila.style.display !== 'none') { fila.style.display = 'none'; return; }
+
+    let inputPrecio = document.getElementById(`m1-rev-precio-${idx}`);
+    let nuevoCosto = parseFloat(inputPrecio.value);
+    if (isNaN(nuevoCosto) || nuevoCosto <= 0) { alert("⚠️ Ingresá un precio nuevo válido primero."); return; }
+
+    let producto = db.productos.find(p => p.id === r.id);
+    if (!producto) { cont.innerHTML = '<p style="font-size:11px; color:#999;">Producto no encontrado.</p>'; fila.style.display = 'table-row'; return; }
+
+    let filasHtml = '';
+    let huboAlerta = false;
+    let seEncontroEnAlgunaLista = false;
+
+    (db.listas || []).forEach(l => {
+        if (l.ocultos && l.ocultos.includes(r.id)) return; // producto oculto en esta lista
+
+        (l.columnas || []).forEach(c => {
+            if ((producto.esUnidad && c !== 'unidad') || (!producto.esUnidad && c === 'unidad')) return;
+            let keyCelda = `${r.id}_${c}`;
+            if (l.celdasOcultas && l.celdasOcultas.includes(keyCelda)) return;
+
+            seEncontroEnAlgunaLista = true;
+            let colName = (l.nombresCols && l.nombresCols[c]) ? l.nombresCols[c] : c;
+            let keyPres = `${l.id}_${r.id}_${c}`;
+            let nombrePres = db.pres_manuales[keyPres] || colName;
+            let costoEnvase = (l.costosEnvase && l.costosEnvase[c]) ? l.costosEnvase[c] : 0;
+            let manual = db.precios_manuales[keyPres];
+
+            let precioActualCalc = calcularPrecioBase(r.costoActual, c, producto.esUnidad, l.margen, nombrePres, costoEnvase);
+            let precioNuevoCalc = calcularPrecioBase(nuevoCosto, c, producto.esUnidad, l.margen, nombrePres, costoEnvase);
+            let precioActual = manual !== undefined ? manual : precioActualCalc;
+            let precioNuevo = manual !== undefined ? manual : precioNuevoCalc;
+
+            let variacionPct = precioActual > 0 ? ((precioNuevo - precioActual) / precioActual * 100) : 0;
+            let esAumentoFuerte = variacionPct >= 15;
+            if (esAumentoFuerte) huboAlerta = true;
+            let colorFila = esAumentoFuerte ? 'background:#fdf2f2;' : '';
+            let colorVar = esAumentoFuerte ? 'var(--danger)' : (variacionPct > 0 ? '#e67e22' : (variacionPct < 0 ? 'var(--success)' : '#888'));
+
+            filasHtml += `<tr style="${colorFila}">
+                <td style="text-align:left; padding:4px; font-size:11px;">${l.nombre}${manual !== undefined ? ' <span title="Precio fijado a mano en esta lista: no se mueve solo" style="color:#e67e22;">🔒</span>' : ''}</td>
+                <td style="text-align:center; padding:4px; font-size:11px;">${nombrePres}</td>
+                <td style="text-align:center; padding:4px; font-size:11px; color:#888;">$${precioActual}</td>
+                <td style="text-align:center; padding:4px; font-size:11px; font-weight:bold;">$${precioNuevo}</td>
+                <td style="text-align:center; padding:4px; font-size:11px; font-weight:bold; color:${colorVar};">${variacionPct >= 0 ? '+' : ''}${variacionPct.toFixed(0)}%</td>
+            </tr>`;
+        });
+    });
+
+    if (!seEncontroEnAlgunaLista) {
+        cont.innerHTML = '<p style="font-size:11px; color:#999;">Este producto no está visible en ninguna de tus listas todavía.</p>';
+    } else {
+        let aviso = huboAlerta ? '<p style="font-size:11px; color:var(--danger); font-weight:bold; margin:0 0 6px 0;">⚠️ Hay presentaciones con 15% o más de aumento — revisalas antes de aplicar.</p>' : '';
+        let notaCandado = '<p style="font-size:10px; color:#999; margin:6px 0 0 0;">🔒 = precio fijado a mano en esa lista puntual: no se va a mover aunque cambies el costo base.</p>';
+        cont.innerHTML = `${aviso}<div class="table-responsive"><table style="width:100%; border-collapse:collapse;">
+            <thead><tr>
+                <th style="text-align:left; font-size:10px; padding:4px;">Lista</th>
+                <th style="font-size:10px; padding:4px;">Present.</th>
+                <th style="font-size:10px; padding:4px;">Actual</th>
+                <th style="font-size:10px; padding:4px;">Nuevo</th>
+                <th style="font-size:10px; padding:4px;">Var.</th>
+            </tr></thead>
+            <tbody>${filasHtml}</tbody>
+        </table></div>${notaCandado}`;
+    }
+
+    fila.style.display = 'table-row';
 }
 
 function m1_aplicarPreciosProveedor() {
