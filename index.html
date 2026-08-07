@@ -369,8 +369,12 @@
                 <button class="btn-back" onclick="nav('page-dashboard')">← Inicio</button><h2>📦 M3: Ventas</h2>
             </div>
         </div>
+
+        <div style="padding: 15px 15px 0 15px;">
+            <button class="btn btn-accent" id="m3-btn-nuevo-pedido" onclick="m3_toggleFormArmado()" style="margin-top:0; display:flex; align-items:center; justify-content:center; gap:8px; font-size:16px; padding:16px;">➕ Nuevo Pedido</button>
+        </div>
         
-        <div class="section" id="m3-form-armado">
+        <div class="section" id="m3-form-armado" style="display:none;">
             <h3 class="section-title">1. Armar Solicitud / Remito</h3>
             <div id="m3-editando-banner" style="display:none; background:#fff3cd; border:1px solid #ffe69c; color:#856404; padding:10px; border-radius:8px; margin-bottom:10px; font-size:12px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <span>✏️ Editando remito existente — los cambios reemplazan al original.</span>
@@ -2399,7 +2403,23 @@
         let selL = document.getElementById('m3-lista-select');
         selL.innerHTML = '<option value="">-- Seleccionar Lista --</option>';
         db.listas.forEach(l => selL.innerHTML += `<option value="${l.id}">${l.nombre}</option>`);
+        document.getElementById('m3-form-armado').style.display = 'none';
+        document.getElementById('m3-btn-nuevo-pedido').innerText = '➕ Nuevo Pedido';
         m3_renderPedidos();
+    }
+
+    function m3_toggleFormArmado() {
+        let form = document.getElementById('m3-form-armado');
+        let btn = document.getElementById('m3-btn-nuevo-pedido');
+        if (form.style.display === 'none') {
+            form.style.display = 'block';
+            btn.innerText = '➖ Cerrar';
+            form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+            if (m3_editandoVentaId) m3_cancelarEdicion();
+            form.style.display = 'none';
+            btn.innerText = '➕ Nuevo Pedido';
+        }
     }
 
     function m3_renderSelectorProductos() {
@@ -2524,6 +2544,8 @@
             document.getElementById('m3-ajuste').value = '0';
             alert("✅ Remito Guardado.");
         }
+        document.getElementById('m3-form-armado').style.display = 'none';
+        document.getElementById('m3-btn-nuevo-pedido').innerText = '➕ Nuevo Pedido';
         m3_renderPedidos();
     }
 
@@ -2544,6 +2566,8 @@
         document.getElementById('m3-btn-guardar').innerText = '💾 Guardar Cambios del Remito';
 
         m3_renderCarrito();
+        document.getElementById('m3-form-armado').style.display = 'block';
+        document.getElementById('m3-btn-nuevo-pedido').innerText = '➖ Cerrar';
         document.getElementById('m3-form-armado').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
@@ -2560,8 +2584,18 @@
     function m3_renderPedidos() {
         let cont = document.getElementById('m3-pedidos-container'); cont.innerHTML = '';
         if(db.ventas.length === 0) { cont.innerHTML = '<p style="text-align:center; font-size:12px; color:#888;">No hay pedidos registrados.</p>'; return;}
-        
-        db.ventas.forEach(v => {
+
+        // Pendientes (sin entregar) primero, ordenados por fecha más próxima primero.
+        // Los ya entregados quedan al final, del más reciente al más viejo.
+        let ventasOrdenadas = db.ventas.slice().sort((a, b) => {
+            let aPendiente = a.estado !== 'Entregado';
+            let bPendiente = b.estado !== 'Entregado';
+            if (aPendiente !== bPendiente) return aPendiente ? -1 : 1;
+            if (aPendiente) return (a.fecha || '').localeCompare(b.fecha || ''); // pendientes: fecha más próxima primero
+            return (b.fecha || '').localeCompare(a.fecha || ''); // entregados: más reciente primero
+        });
+
+        ventasOrdenadas.forEach(v => {
             let colorEst = v.estado === 'Entregado' ? 'badge-done' : 'badge-pending';
             let colorPag = v.pago === 'Pagado' ? 'badge-done' : 'badge-pending';
             let itemsHtml = v.estado === 'Preparación' ? 
