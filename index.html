@@ -1742,12 +1742,16 @@
     function m2_editarCliente(cid) {
         let c = db.clientes.find(x => x.id === cid);
         if(!c) return;
-        let tel = prompt(`Teléfono (WhatsApp) de ${c.nombre}:`, c.telefono || "");
+        let nom = prompt(`Nombre del local:`, c.nombre || "");
+        if (nom === null) return;
+        if (nom.trim() === "") return alert("⚠️ El nombre no puede quedar vacío.");
+        let tel = prompt(`Teléfono (WhatsApp) de ${nom}:`, c.telefono || "");
         if (tel === null) return;
-        let dom = prompt(`Domicilio de ${c.nombre}:`, c.domicilio || "");
+        let dom = prompt(`Domicilio de ${nom}:`, c.domicilio || "");
         if (dom === null) return;
-        let zona = prompt(`Zona / Localidad de ${c.nombre}:`, c.zona || "");
+        let zona = prompt(`Zona / Localidad de ${nom}:`, c.zona || "");
         if (zona === null) return;
+        c.nombre = nom.trim();
         c.telefono = tel;
         c.domicilio = dom;
         c.zona = zona;
@@ -1755,6 +1759,22 @@
         alert("✅ Datos del local actualizados.");
         if (document.getElementById('m2-cliente-select').value === cid) m2_abrirPlanillaMaestra();
         m2_renderListadoClientes();
+    }
+
+    function m2_borrarCliente(cid) {
+        let c = db.clientes.find(x => x.id === cid);
+        if (!c) return;
+        let tieneDeuda = (parseFloat(c.deuda) || 0) > 0;
+        let mensaje = `⚠️ ¿Borrar el local "${c.nombre}"?\n\nSe borra el local y su stock actual en consignación. El historial de visitas anteriores queda guardado igual (para no perder esos números), pero ya no vas a poder abrir este local.`;
+        if (tieneDeuda) mensaje += `\n\n⚠️ OJO: este local tiene una deuda pendiente de $${c.deuda} que se va a perder.`;
+        if (!confirm(mensaje)) return;
+
+        db.clientes = db.clientes.filter(x => x.id !== cid);
+        if (db.stock_consignacion && db.stock_consignacion[cid]) delete db.stock_consignacion[cid];
+        if (db.conteos_pendientes && db.conteos_pendientes[cid]) delete db.conteos_pendientes[cid];
+        saveDB();
+        alert("✅ Local borrado.");
+        m2_volverListadoClientes();
     }
 
     function m2_abrirWhatsapp(cid) {
@@ -1846,6 +1866,7 @@
                     <button onclick="m2_abrirWhatsapp('${cid}')" style="background:#25D366; color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">💬 WhatsApp</button>
                     <button onclick="m2_editarCliente('${cid}')" style="background:var(--info); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">✏️ Editar datos</button>
                     <button onclick="m2_registrarPago('${cid}')" style="background:var(--success); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">💰 Registrar Pago</button>
+                    <button onclick="m2_borrarCliente('${cid}')" style="background:var(--danger); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">🗑️ Borrar Local</button>
                 </div>
             </div>
 
@@ -1854,6 +1875,7 @@
                 <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:130px; font-size:12px; padding:10px; border-color:var(--primary); color:var(--primary);" onclick="exportarPDFStockActual('${cid}')">📄 PDF Stock Actual</button>
                 <button class="btn btn-outline" style="margin-top:0; flex:1; min-width:130px; font-size:12px; padding:10px; border-color:var(--info); color:var(--info);" onclick="exportarImagenStockActual('${cid}')">📲 WhatsApp</button>
             </div>
+            <button class="btn btn-outline" style="margin-top:0; margin-bottom:10px; font-size:12px; padding:10px; border-color:#856404; color:#856404; background:#fff3cd;" onclick="exportarPDFPlanillaConteoManual('${cid}')">🖨️ Planilla para Imprimir (conteo a mano)</button>
             `;
 
         if (pendiente) {
@@ -2698,6 +2720,63 @@
             doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 12);
 
             doc.save(`Stock_${c.nombre.replace(/\s+/g, '_')}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`);
+        } catch(e) { alert("⚠️ Error PDF: " + e.message); }
+    }
+
+    // Planilla en blanco para completar a mano en el local: muestra el stock actual
+    // (lo que ya sabe la app) y deja vacías las columnas de Conteo, Vendido,
+    // Reposición y Stock Nuevo para anotar a lápiz mientras se hace el recorrido.
+    function exportarPDFPlanillaConteoManual(cid) {
+        try {
+            let c = db.clientes.find(x => x.id === cid);
+            if (!db.stock_consignacion[cid]) db.stock_consignacion[cid] = {};
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
+
+            doc.setFillColor(44, 62, 80);
+            doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(18); doc.setFont("helvetica", "bold");
+            doc.text("marJav Pro", 15, 14);
+            doc.setFontSize(10); doc.setFont("helvetica", "normal");
+            doc.text(`Planilla de Conteo — ${c.nombre}`, 15, 22);
+            doc.text(new Date().toLocaleDateString(), doc.internal.pageSize.getWidth() - 15, 22, { align: "right" });
+            doc.setTextColor(0, 0, 0);
+
+            let bodyData = [];
+            db.familias.forEach(f => {
+                let prods = db.productos.filter(p => p.familia === f);
+                let itemsFam = [];
+                prods.forEach(p => {
+                    let estaOculto = c.ocultos && c.ocultos.includes(p.id);
+                    if (estaOculto) return;
+                    let stockObj = db.stock_consignacion[cid][p.id] || {cant: 0, pV: 0};
+                    itemsFam.push([p.nombre, `$${stockObj.pV || 0}`, stockObj.cant.toString(), '', '', '', '']);
+                });
+                if (itemsFam.length > 0) {
+                    bodyData.push([{ content: f.toUpperCase(), colSpan: 7, styles: { fillColor: [210, 210, 210], fontStyle: 'bold', halign: 'center' } }]);
+                    bodyData = bodyData.concat(itemsFam);
+                }
+            });
+
+            if (bodyData.length === 0) return alert("⚠️ Este local todavía no tiene productos habilitados.");
+
+            doc.autoTable({
+                startY: 36,
+                head: [['Producto', 'Precio', 'Stock Actual', 'Conteo', 'Vendido', 'Repos.', 'Stock Nuevo']],
+                body: bodyData, theme: 'grid',
+                styles: { fontSize: 8.5, cellPadding: 3, minCellHeight: 8 },
+                headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+                columnStyles: {
+                    0: { cellWidth: 65 }, 1: { halign: 'center', cellWidth: 20 }, 2: { halign: 'center', cellWidth: 20, fontStyle: 'bold' },
+                    3: { halign: 'center', cellWidth: 22 }, 4: { halign: 'center', cellWidth: 22 }, 5: { halign: 'center', cellWidth: 22 }, 6: { halign: 'center', cellWidth: 22 }
+                }
+            });
+
+            doc.setFontSize(8); doc.setFont("helvetica", "italic"); doc.setTextColor(120, 120, 120);
+            doc.text("Las columnas Conteo, Vendido, Repos. y Stock Nuevo se completan a mano.", 15, doc.internal.pageSize.getHeight() - 18);
+            doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 12);
+
+            doc.save(`Planilla_Conteo_${c.nombre.replace(/\s+/g, '_')}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`);
         } catch(e) { alert("⚠️ Error PDF: " + e.message); }
     }
 
