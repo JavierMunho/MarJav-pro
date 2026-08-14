@@ -2620,18 +2620,9 @@
         ventasOrdenadas.forEach(v => {
             let colorEst = v.estado === 'Entregado' ? 'badge-done' : 'badge-pending';
             let colorPag = v.pago === 'Pagado' ? 'badge-done' : 'badge-pending';
-            let itemsHtml = v.estado === 'Preparación' ? 
-                `<div style="background:#f4f6f7; padding:10px; border-radius:6px; margin-bottom:10px; border: 1px solid #e0e0e0;"><b style="font-size:12px; color:var(--secondary); display:block; margin-bottom:5px;">📋 Detalle a preparar:</b><ul style="margin: 0; padding-left: 20px; font-size:12px; color:#333;">${v.items.map(i => `<li style="margin-bottom:3px;"><b>${i.cant}x</b> ${i.nombre}</li>`).join('')}</ul></div>` : 
-                `<div style="font-size:11px; color:#888; font-style:italic; margin-bottom:10px; padding:5px; background:#f9f9f9; border-radius:4px; text-align:center;">Ítems ocultos (Pedido Entregado)</div>`;
+            let completo = v.estado === 'Entregado' && v.pago === 'Pagado';
 
-            cont.innerHTML += `
-            <div class="card-item">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                    <b style="font-size:14px;">${v.cliente}</b>
-                    <span style="font-size:15px; font-weight:900; color:var(--success);">$${v.total}</span>
-                </div>
-                <div style="font-size:11px; color:#666; margin-bottom: 10px;">ID: #${v.id.slice(-4)} | Fecha: ${v.fecha}${v.pago === 'Pagado' && v.medioPago ? ' | 💰 ' + v.medioPago : ''}</div>
-                ${itemsHtml}
+            let botonesHtml = `
                 <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
                     <span class="badge ${colorEst}" onclick="m3_toggleEstado('${v.id}', 'estado')" style="cursor:pointer;">Estado: ${v.estado}</span>
                     <span class="badge ${colorPag}" onclick="m3_toggleEstado('${v.id}', 'pago')" style="cursor:pointer;">Cobro: ${v.pago}</span>
@@ -2641,8 +2632,39 @@
                     <button class="btn btn-small btn-success" style="margin-top:0;" onclick="generarImagenRemito('${v.id}')">📲 Enviar por WhatsApp</button>
                     <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--info); color:var(--info);" onclick="m3_editarVenta('${v.id}')">✏️ Editar</button>
                     <button class="btn btn-small btn-outline" style="margin-top:0; border-color:var(--danger); color:var(--danger);" onclick="m3_borrarVenta('${v.id}')">🗑️ Borrar</button>
-                </div>
-            </div>`;
+                </div>`;
+
+            if (completo) {
+                // Entregado y cobrado: fila compacta, se despliega igual que antes al tocarla.
+                let itemsHtml = `<div style="font-size:11px; color:#888; font-style:italic; margin-bottom:10px; padding:5px; background:#f9f9f9; border-radius:4px; text-align:center;">Ítems ocultos (Pedido Entregado)</div>`;
+                cont.innerHTML += `
+                <details class="familia-collapse" style="margin-bottom:10px;">
+                    <summary>
+                        <span>✅ ${v.cliente} <span style="font-weight:normal; opacity:0.85;">— ${v.fecha}</span></span>
+                        <b style="margin-right:8px;">$${v.total}</b>
+                    </summary>
+                    <div style="padding:12px; background:#fff;">
+                        <div style="font-size:11px; color:#666; margin-bottom: 10px;">ID: #${v.id.slice(-4)}${v.medioPago ? ' | 💰 ' + v.medioPago : ''}</div>
+                        ${itemsHtml}
+                        ${botonesHtml}
+                    </div>
+                </details>`;
+            } else {
+                let itemsHtml = v.estado === 'Preparación' ?
+                    `<div style="background:#f4f6f7; padding:10px; border-radius:6px; margin-bottom:10px; border: 1px solid #e0e0e0;"><b style="font-size:12px; color:var(--secondary); display:block; margin-bottom:5px;">📋 Detalle a preparar:</b><ul style="margin: 0; padding-left: 20px; font-size:12px; color:#333;">${v.items.map(i => `<li style="margin-bottom:3px;"><b>${i.cant}x</b> ${i.nombre}</li>`).join('')}</ul></div>` :
+                    `<div style="font-size:11px; color:#888; font-style:italic; margin-bottom:10px; padding:5px; background:#f9f9f9; border-radius:4px; text-align:center;">Ítems ocultos (Pedido Entregado)</div>`;
+
+                cont.innerHTML += `
+                <div class="card-item">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                        <b style="font-size:14px;">${v.cliente}</b>
+                        <span style="font-size:15px; font-weight:900; color:var(--success);">$${v.total}</span>
+                    </div>
+                    <div style="font-size:11px; color:#666; margin-bottom: 10px;">ID: #${v.id.slice(-4)} | Fecha: ${v.fecha}${v.pago === 'Pagado' && v.medioPago ? ' | 💰 ' + v.medioPago : ''}</div>
+                    ${itemsHtml}
+                    ${botonesHtml}
+                </div>`;
+            }
         });
     }
 

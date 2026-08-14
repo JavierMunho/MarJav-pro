@@ -387,7 +387,7 @@ function m4_renderResumen() {
         if (h.tipo !== 'pago' && m4_enRango(h.fecha, desde, hasta)) costoVendidoPeriodo += m4_costoConsignacion(h);
     });
 
-    let gananciaNeta = ingresosPeriodo - costoVendidoPeriodo - egresosPeriodo;
+    let gananciaNeta = ingresosPeriodo - costoVendidoPeriodo;
 
     document.getElementById('m4-tarjetas-container').innerHTML = `
         <div class="grid-2">
@@ -399,7 +399,7 @@ function m4_renderResumen() {
             <div style="background:#eaf2fb; border:2px solid var(--info); border-radius:12px; padding:18px 10px; text-align:center;">
                 <div style="font-size:12px; font-weight:bold; color:var(--info); text-transform:uppercase; letter-spacing:0.5px;">Ganancia Neta</div>
                 <div style="font-size:26px; font-weight:900; color:var(--info); margin-top:6px; word-break:break-all;">$${gananciaNeta.toFixed(0)}</div>
-                <div style="font-size:11px; color:#888; margin-top:4px;">Ingresos − Costo − Gastos</div>
+                <div style="font-size:11px; color:#888; margin-top:4px;">Cobrado − Costo</div>
             </div>
         </div>
         <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; font-size:11px; color:#666;">
@@ -409,8 +409,9 @@ function m4_renderResumen() {
         <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; font-size:10px; color:#888; text-align:center;">
             <div style="flex:1; min-width:90px;">Ingresos<br><b style="color:var(--success);">$${ingresosPeriodo.toFixed(0)}</b></div>
             <div style="flex:1; min-width:90px;">Costo vendido<br><b style="color:var(--danger);">-$${costoVendidoPeriodo.toFixed(0)}</b></div>
-            <div style="flex:1; min-width:90px;">Gastos<br><b style="color:var(--danger);">-$${egresosPeriodo.toFixed(0)}</b></div>
+            <div style="flex:1; min-width:90px;">Gastos (aparte)<br><b style="color:var(--danger);">-$${egresosPeriodo.toFixed(0)}</b></div>
         </div>
+        <p style="font-size:9px; color:#aaa; margin:4px 0 0 0; text-align:center;">Los gastos afectan la Caja pero no la Ganancia Neta (que es Cobrado − Costo).</p>
         <button onclick="m4_editarCajaActual()" style="width:100%; margin-top:10px; background:none; border:1px dashed #ccc; color:#888; font-size:11px; padding:8px; border-radius:8px; cursor:pointer;">✏️ Corregir valor actual de Efectivo/Cuenta</button>
     `;
 
