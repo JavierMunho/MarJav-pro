@@ -3317,7 +3317,8 @@
                 doc.setFont("helvetica", "italic");
                 doc.setTextColor(120, 120, 120);
                 doc.text(`Estado: ${v.estado}  |  Cobro: ${v.pago}`, 15, finalY + 25);
-                doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 12);
+                doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 18);
+                doc.text("Transferencias — Alias: javiermix.lemon", 15, doc.internal.pageSize.getHeight() - 12);
 
                 doc.save(`Remito_${v.cliente.replace(/\s+/g, '_')}_${v.id.slice(-6)}.pdf`);
             }
@@ -3373,7 +3374,8 @@
                         <div style="margin-top:12px; font-size:11px; color:#888;">Estado: ${v.estado} · Cobro: ${v.pago}</div>
                     </div>
                     <div style="background:#f8f9fa; border-top:1px solid #eee; padding:14px 18px; text-align:center; font-size:11px; color:#666;">
-                        📞 Javier 1138988346 | Marcela 1157081322
+                        📞 Javier 1138988346 | Marcela 1157081322<br>
+                        <span style="font-size:10px; color:#888;">💳 Transferencias — Alias: javiermix.lemon</span>
                     </div>
                 </div>`;
             document.body.appendChild(temp);
