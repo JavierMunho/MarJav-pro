@@ -269,7 +269,7 @@ function m4_renderPendientes() {
     let totalDeudaConsignacion = localesConDeuda.reduce((s, c) => s + (parseFloat(c.deuda) || 0), 0);
 
     // Stock distribuido en consignación, valorizado al precio de venta vigente en cada local
-    let stockPorArticulo = {}; // pid -> { cant, valor }
+    let stockPorArticulo = {}; // pid -> { cant, valor, costo }
     let localesConStock = 0;
     (db.clientes || []).forEach(c => {
         let stockCliente = db.stock_consignacion ? db.stock_consignacion[c.id] : null;
@@ -279,9 +279,12 @@ function m4_renderPendientes() {
             let s = stockCliente[pid];
             if (!s || !s.cant || s.cant <= 0) continue;
             tieneStock = true;
-            if (!stockPorArticulo[pid]) stockPorArticulo[pid] = { cant: 0, valor: 0 };
+            let producto = db.productos.find(p => p.id === pid);
+            let costoUnitario = producto ? (producto.esUnidad ? (producto.costo || 0) : (producto.costo || 0) / 10) : 0;
+            if (!stockPorArticulo[pid]) stockPorArticulo[pid] = { cant: 0, valor: 0, costo: 0 };
             stockPorArticulo[pid].cant += s.cant;
             stockPorArticulo[pid].valor += s.cant * (s.pV || 0);
+            stockPorArticulo[pid].costo += s.cant * costoUnitario;
         }
         if (tieneStock) localesConStock++;
     });
@@ -327,13 +330,16 @@ function m4_renderPendientes() {
         if (prods.length === 0) return;
         let filasFam = prods.map(p => {
             let d = stockPorArticulo[p.id];
+            let margen = d.valor - d.costo;
             return `<tr>
                 <td style="text-align:left; padding:6px 4px; border-bottom:1px solid #eee; font-size:12px;">${p.nombre}</td>
                 <td style="text-align:center; padding:6px 4px; border-bottom:1px solid #eee; font-size:12px;">${d.cant}</td>
+                <td style="text-align:right; padding:6px 4px; border-bottom:1px solid #eee; font-size:12px; color:#888;">$${d.costo.toFixed(0)}</td>
                 <td style="text-align:right; padding:6px 4px; border-bottom:1px solid #eee; font-size:12px; font-weight:bold;">$${d.valor.toFixed(0)}</td>
+                <td style="text-align:right; padding:6px 4px; border-bottom:1px solid #eee; font-size:12px; font-weight:bold; color:var(--success);">$${margen.toFixed(0)}</td>
             </tr>`;
         }).join('');
-        filasHtmlStock += `<tr class="fam-row"><td colspan="3" style="background:#d1d5db; color:#333; font-weight:bold; text-align:center; padding:6px; font-size:11px; text-transform:uppercase;">${f}</td></tr>${filasFam}`;
+        filasHtmlStock += `<tr class="fam-row"><td colspan="5" style="background:#d1d5db; color:#333; font-weight:bold; text-align:center; padding:6px; font-size:11px; text-transform:uppercase;">${f}</td></tr>${filasFam}`;
     });
 
     let detalleStockConsignacion = cantidadArticulosDistintos > 0
@@ -341,7 +347,9 @@ function m4_renderPendientes() {
             <thead><tr>
                 <th style="text-align:left; padding:6px 4px; font-size:10px;">Producto</th>
                 <th style="padding:6px 4px; font-size:10px;">Cant.</th>
-                <th style="text-align:right; padding:6px 4px; font-size:10px;">Valor</th>
+                <th style="text-align:right; padding:6px 4px; font-size:10px;">Costo</th>
+                <th style="text-align:right; padding:6px 4px; font-size:10px;">Venta</th>
+                <th style="text-align:right; padding:6px 4px; font-size:10px;">Margen</th>
             </tr></thead>
             <tbody>${filasHtmlStock}</tbody>
            </table></div>`
