@@ -2764,14 +2764,17 @@
             doc.text(new Date().toLocaleDateString(), doc.internal.pageSize.getWidth() - 15, 22, { align: "right" });
             doc.setTextColor(0, 0, 0);
 
+            let listaCons = db.listas.find(l => l.nombre.toLowerCase().includes('consign'));
             let bodyData = [];
             db.familias.forEach(f => {
                 let prods = db.productos.filter(p => p.familia === f);
                 let itemsFam = [];
                 prods.forEach(p => {
-                    let estaOculto = c.ocultos && c.ocultos.includes(p.id);
-                    if (estaOculto) return;
                     let stockObj = db.stock_consignacion[cid][p.id] || {cant: 0, pV: 0};
+                    let estaOcultoPorCliente = c.ocultos && c.ocultos.includes(p.id);
+                    let estaOcultoEnListaM1 = listaCons && listaCons.ocultos && listaCons.ocultos.includes(p.id);
+                    let estaOculto = estaOcultoPorCliente || (estaOcultoEnListaM1 && stockObj.cant === 0);
+                    if (estaOculto) return;
                     itemsFam.push([p.nombre, `$${stockObj.pV || 0}`, stockObj.cant.toString(), '', '', '', '']);
                 });
                 if (itemsFam.length > 0) {
