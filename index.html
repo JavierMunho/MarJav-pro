@@ -423,6 +423,13 @@
                 <div id="m3-pedidos-container"></div>
             </div>
         </div>
+
+        <div class="section" style="background: transparent; border: none; padding: 0; box-shadow: none;">
+            <details class="familia-collapse">
+                <summary><span>📦 Pedidos Cumplidos (Entregados y Cobrados)</span></summary>
+                <div id="m3-pedidos-cumplidos-container" style="padding:12px; background:#fff;"></div>
+            </details>
+        </div>
     </div>
 
     <!-- MÓDULO 4: FINANZAS -->
@@ -2605,10 +2612,12 @@
 
     function m3_renderPedidos() {
         let cont = document.getElementById('m3-pedidos-container'); cont.innerHTML = '';
+        let contCumplidos = document.getElementById('m3-pedidos-cumplidos-container'); contCumplidos.innerHTML = '';
+
         if(db.ventas.length === 0) { cont.innerHTML = '<p style="text-align:center; font-size:12px; color:#888;">No hay pedidos registrados.</p>'; return;}
 
-        // Pendientes (sin entregar) primero, ordenados por fecha más próxima primero.
-        // Los ya entregados quedan al final, del más reciente al más viejo.
+        // Pendientes (sin entregar o sin cobrar) primero, ordenados por fecha más próxima primero.
+        // Los ya entregados Y cobrados van aparte, a la carpeta de Pedidos Cumplidos.
         let ventasOrdenadas = db.ventas.slice().sort((a, b) => {
             let aPendiente = a.estado !== 'Entregado';
             let bPendiente = b.estado !== 'Entregado';
@@ -2616,6 +2625,9 @@
             if (aPendiente) return (a.fecha || '').localeCompare(b.fecha || ''); // pendientes: fecha más próxima primero
             return (b.fecha || '').localeCompare(a.fecha || ''); // entregados: más reciente primero
         });
+
+        let huboPendientes = false;
+        let huboCumplidos = false;
 
         ventasOrdenadas.forEach(v => {
             let colorEst = v.estado === 'Entregado' ? 'badge-done' : 'badge-pending';
@@ -2635,9 +2647,10 @@
                 </div>`;
 
             if (completo) {
-                // Entregado y cobrado: fila compacta, se despliega igual que antes al tocarla.
+                // Entregado y cobrado: va a la carpeta de "Pedidos Cumplidos", como fila compacta.
+                huboCumplidos = true;
                 let itemsHtml = `<div style="font-size:11px; color:#888; font-style:italic; margin-bottom:10px; padding:5px; background:#f9f9f9; border-radius:4px; text-align:center;">Ítems ocultos (Pedido Entregado)</div>`;
-                cont.innerHTML += `
+                contCumplidos.innerHTML += `
                 <details class="familia-collapse" style="margin-bottom:10px;">
                     <summary>
                         <span>✅ ${v.cliente} <span style="font-weight:normal; opacity:0.85;">— ${v.fecha}</span></span>
@@ -2650,6 +2663,7 @@
                     </div>
                 </details>`;
             } else {
+                huboPendientes = true;
                 let itemsHtml = v.estado === 'Preparación' ?
                     `<div style="background:#f4f6f7; padding:10px; border-radius:6px; margin-bottom:10px; border: 1px solid #e0e0e0;"><b style="font-size:12px; color:var(--secondary); display:block; margin-bottom:5px;">📋 Detalle a preparar:</b><ul style="margin: 0; padding-left: 20px; font-size:12px; color:#333;">${v.items.map(i => `<li style="margin-bottom:3px;"><b>${i.cant}x</b> ${i.nombre}</li>`).join('')}</ul></div>` :
                     `<div style="font-size:11px; color:#888; font-style:italic; margin-bottom:10px; padding:5px; background:#f9f9f9; border-radius:4px; text-align:center;">Ítems ocultos (Pedido Entregado)</div>`;
@@ -2666,6 +2680,9 @@
                 </div>`;
             }
         });
+
+        if (!huboPendientes) cont.innerHTML = '<p style="text-align:center; font-size:12px; color:#888;">🎉 No hay pedidos pendientes de entrega o cobro.</p>';
+        if (!huboCumplidos) contCumplidos.innerHTML = '<p style="text-align:center; font-size:12px; color:#888;">Todavía no hay pedidos cumplidos.</p>';
     }
 
     function m3_borrarVenta(id) {
