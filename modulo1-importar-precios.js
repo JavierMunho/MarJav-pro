@@ -312,7 +312,7 @@ function m1_aplicarPreciosProveedor() {
                 let recomendado = calcularPrecioBase(producto.costo, c, producto.esUnidad, l.margen, nombrePres, costoEnvase);
 
                 if (recomendado > manual) {
-                    alertasMargen.push({ lista: l.nombre, producto: producto.nombre, presentacion: nombrePres, actual: manual, recomendado: recomendado, dif: recomendado - manual });
+                    alertasMargen.push({ key: keyPres, lista: l.nombre, producto: producto.nombre, presentacion: nombrePres, actual: manual, recomendado: recomendado, dif: recomendado - manual });
                 }
             });
         });
@@ -336,19 +336,45 @@ function m1_aplicarPreciosProveedor() {
 // Muestra, después de aplicar los costos nuevos, SOLO los precios fijados a mano que
 // quedaron por debajo del margen esperado — para responder directo "¿qué tengo que
 // tocar en mis listas de venta para no perder margen?"
+let m1_alertasMargenActuales = [];
+
 function m1_mostrarAlertaMargen(alertas, aplicados) {
     alertas.sort((a, b) => b.dif - a.dif);
-    let filas = alertas.map(a => `
+    m1_alertasMargenActuales = alertas;
+    let filas = alertas.map((a, idx) => `
         <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:12px;">
-            <span>${a.lista} — ${a.producto} <span style="color:#999;">(${a.presentacion})</span></span>
+            <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:normal;">
+                <input type="checkbox" id="m1-margen-check-${idx}" checked style="width:16px; height:16px;">
+                ${a.lista} — ${a.producto} <span style="color:#999;">(${a.presentacion})</span>
+            </label>
             <span style="white-space:nowrap; margin-left:8px;">$${a.actual} → <b style="color:var(--danger);">$${a.recomendado}</b></span>
         </div>`).join('');
 
     document.getElementById('m1-revision-precios').innerHTML = `
         <div style="background:#fdf2f2; border:1px solid #f5c6cb; border-radius:10px; padding:14px;">
             <b style="color:var(--danger); font-size:13px;">⚠️ ${alertas.length} precio(s) fijado(s) a mano quedaron cortos de margen</b>
-            <p style="font-size:11px; color:#555; margin:8px 0;">Ya actualizamos ${aplicados} costo(s) base. Estos precios de venta están fijados a mano en sus listas y, con el costo nuevo, ya no te dejan el margen configurado para esa lista — te conviene subirlos:</p>
+            <p style="font-size:11px; color:#555; margin:8px 0;">Ya actualizamos ${aplicados} costo(s) base. Estos precios de venta están fijados a mano en sus listas y, con el costo nuevo, ya no te dejan el margen configurado para esa lista. Tildá los que querés subir al recomendado:</p>
             ${filas}
-            <p style="font-size:10px; color:#888; margin-top:8px;">Para actualizarlos, entrá a cada lista (Módulo 1 → Editar) y cambiá el precio de esa celda puntual.</p>
+            <button class="btn btn-success" style="margin-top:12px;" onclick="m1_aplicarAlertaMargen()">✅ Actualizar los tildados</button>
+            <p style="font-size:10px; color:#888; margin-top:8px;">Los que no tildes quedan como están — los podés cambiar después a mano en el editor de esa lista.</p>
         </div>`;
+}
+
+function m1_aplicarAlertaMargen() {
+    let aplicados = 0;
+    m1_alertasMargenActuales.forEach((a, idx) => {
+        let check = document.getElementById(`m1-margen-check-${idx}`);
+        if (!check || !check.checked) return;
+        db.precios_manuales[a.key] = a.recomendado;
+        aplicados++;
+    });
+
+    if (aplicados === 0) return alert("⚠️ No tildaste ningún precio para actualizar.");
+
+    saveDB();
+    alert(`✅ Se actualizaron ${aplicados} precio(s) fijo(s) en sus listas.`);
+    document.getElementById('m1-revision-precios').innerHTML = '';
+    m1_alertasMargenActuales = [];
+    let listaSel = document.getElementById('m1-lista-select');
+    if (listaSel && listaSel.value && typeof m1_renderMatrizLista === 'function') m1_renderMatrizLista(true);
 }
