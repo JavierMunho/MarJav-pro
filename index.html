@@ -2772,13 +2772,13 @@
             const { jsPDF } = window.jspdf; const doc = new jsPDF();
 
             doc.setFillColor(44, 62, 80);
-            doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
+            doc.rect(0, 0, doc.internal.pageSize.getWidth(), 22, 'F');
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(18); doc.setFont("helvetica", "bold");
-            doc.text("marJav Pro", 15, 14);
-            doc.setFontSize(10); doc.setFont("helvetica", "normal");
-            doc.text(`Planilla de Conteo — ${c.nombre}`, 15, 22);
-            doc.text(new Date().toLocaleDateString(), doc.internal.pageSize.getWidth() - 15, 22, { align: "right" });
+            doc.setFontSize(13); doc.setFont("helvetica", "bold");
+            doc.text("marJav Pro", 12, 10);
+            doc.setFontSize(9); doc.setFont("helvetica", "normal");
+            doc.text(`Planilla de Conteo — ${c.nombre}`, 12, 17);
+            doc.text(new Date().toLocaleDateString(), doc.internal.pageSize.getWidth() - 12, 17, { align: "right" });
             doc.setTextColor(0, 0, 0);
 
             let listaCons = db.listas.find(l => l.nombre.toLowerCase().includes('consign'));
@@ -2803,20 +2803,21 @@
             if (bodyData.length === 0) return alert("⚠️ Este local todavía no tiene productos habilitados.");
 
             doc.autoTable({
-                startY: 36,
-                head: [['Producto', 'Precio', 'Stock Actual', 'Conteo', 'Vendido', 'Repos.', 'Stock Nuevo']],
+                startY: 26,
+                margin: { left: 10, right: 10 },
+                head: [['Producto', 'Precio', 'Stock Act.', 'Conteo', 'Vendido', 'Repos.', 'Stock Nuevo']],
                 body: bodyData, theme: 'grid',
-                styles: { fontSize: 8.5, cellPadding: 3, minCellHeight: 8 },
-                headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+                styles: { fontSize: 7.5, cellPadding: 2, minCellHeight: 6 },
+                headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', fontSize: 7 },
                 columnStyles: {
-                    0: { cellWidth: 65 }, 1: { halign: 'center', cellWidth: 20 }, 2: { halign: 'center', cellWidth: 20, fontStyle: 'bold' },
-                    3: { halign: 'center', cellWidth: 22 }, 4: { halign: 'center', cellWidth: 22 }, 5: { halign: 'center', cellWidth: 22 }, 6: { halign: 'center', cellWidth: 22 }
+                    0: { cellWidth: 55 }, 1: { halign: 'center', cellWidth: 16 }, 2: { halign: 'center', cellWidth: 18, fontStyle: 'bold' },
+                    3: { halign: 'center', cellWidth: 18 }, 4: { halign: 'center', cellWidth: 18 }, 5: { halign: 'center', cellWidth: 18 }, 6: { halign: 'center', cellWidth: 20 }
                 }
             });
 
-            doc.setFontSize(8); doc.setFont("helvetica", "italic"); doc.setTextColor(120, 120, 120);
-            doc.text("Las columnas Conteo, Vendido, Repos. y Stock Nuevo se completan a mano.", 15, doc.internal.pageSize.getHeight() - 18);
-            doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 12);
+            doc.setFontSize(7); doc.setFont("helvetica", "italic"); doc.setTextColor(120, 120, 120);
+            doc.text("Las columnas Conteo, Vendido, Repos. y Stock Nuevo se completan a mano.", 12, doc.internal.pageSize.getHeight() - 14);
+            doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 12, doc.internal.pageSize.getHeight() - 9);
 
             doc.save(`Planilla_Conteo_${c.nombre.replace(/\s+/g, '_')}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`);
         } catch(e) { alert("⚠️ Error PDF: " + e.message); }
@@ -2866,29 +2867,31 @@
             if (bodyData.length === 0) return alert("⚠️ Todavía no cargaste ningún conteo.");
 
             doc.setFillColor(44, 62, 80);
-            doc.rect(0, 0, doc.internal.pageSize.getWidth(), 30, 'F');
+            doc.rect(0, 0, doc.internal.pageSize.getWidth(), 22, 'F');
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(18); doc.setFont("helvetica", "bold");
-            doc.text("marJav Pro", 15, 14);
-            doc.setFontSize(10); doc.setFont("helvetica", "normal");
-            doc.text(`Conteo de Consignación — ${c.nombre}`, 15, 22);
-            doc.text(fechaConteo, doc.internal.pageSize.getWidth() - 15, 22, { align: "right" });
+            doc.setFontSize(13); doc.setFont("helvetica", "bold");
+            doc.text("marJav Pro", 12, 10);
+            doc.setFontSize(9); doc.setFont("helvetica", "normal");
+            doc.text(`Conteo de Consignación — ${c.nombre}`, 12, 17);
+            doc.text(fechaConteo, doc.internal.pageSize.getWidth() - 12, 17, { align: "right" });
             doc.setTextColor(0, 0, 0);
 
             doc.autoTable({
-                startY: 36, head: [['Producto', 'Precio', 'Stock Ant.', 'Contado', 'Vendido', 'Subtotal']], body: bodyData, theme: 'grid',
-                styles: { fontSize: 8.5, cellPadding: 2 }, headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
-                columnStyles: { 0: { cellWidth: 75 }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' }, 5: { halign: 'center', fontStyle: 'bold' } }
+                startY: 26,
+                margin: { left: 10, right: 10 },
+                head: [['Producto', 'Precio', 'Stock Ant.', 'Contado', 'Vendido', 'Subtotal']], body: bodyData, theme: 'grid',
+                styles: { fontSize: 7.5, cellPadding: 2 }, headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', fontSize: 7 },
+                columnStyles: { 0: { cellWidth: 62 }, 1: { halign: 'center', cellWidth: 20 }, 2: { halign: 'center', cellWidth: 20 }, 3: { halign: 'center', cellWidth: 20 }, 4: { halign: 'center', cellWidth: 20, fontStyle: 'bold' }, 5: { halign: 'center', cellWidth: 22, fontStyle: 'bold' } }
             });
 
-            let finalY = doc.lastAutoTable.finalY + 10;
+            let finalY = doc.lastAutoTable.finalY + 8;
             doc.setFillColor(240, 240, 240);
-            doc.rect(120, finalY, 75, 12, 'F');
-            doc.setFontSize(12); doc.setFont("helvetica", "bold"); doc.setTextColor(192, 57, 43);
-            doc.text(`TOTAL: $${totalVendido}`, 190, finalY + 8, { align: "right" });
+            doc.rect(120, finalY, 70, 10, 'F');
+            doc.setFontSize(11); doc.setFont("helvetica", "bold"); doc.setTextColor(192, 57, 43);
+            doc.text(`TOTAL: $${totalVendido}`, 186, finalY + 7, { align: "right" });
 
-            doc.setFontSize(9); doc.setFont("helvetica", "italic"); doc.setTextColor(120, 120, 120);
-            doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 15, doc.internal.pageSize.getHeight() - 12);
+            doc.setFontSize(7); doc.setFont("helvetica", "italic"); doc.setTextColor(120, 120, 120);
+            doc.text("Contacto: Javier 1138988346 | Marcela 1157081322", 12, doc.internal.pageSize.getHeight() - 9);
 
             doc.save(`Conteo_${c.nombre.replace(/\s+/g, '_')}_${fechaConteo.replace(/\//g, '-')}.pdf`);
         } catch(e) { alert("⚠️ Error PDF: " + e.message); }
