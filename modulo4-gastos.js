@@ -289,8 +289,9 @@ function m4_renderPendientes() {
         if (tieneStock) localesConStock++;
     });
     let totalValorConsignacion = 0;
+    let totalCostoConsignacion = 0;
     let cantidadArticulosDistintos = 0;
-    for (let pid in stockPorArticulo) { totalValorConsignacion += stockPorArticulo[pid].valor; cantidadArticulosDistintos++; }
+    for (let pid in stockPorArticulo) { totalValorConsignacion += stockPorArticulo[pid].valor; totalCostoConsignacion += (stockPorArticulo[pid].costo || 0); cantidadArticulosDistintos++; }
 
     let filaPendiente = (icono, titulo, cantidad, total, filasDetalle) => {
         let colorMonto = cantidad === 0 ? '#aaa' : 'var(--accent)';
@@ -343,7 +344,11 @@ function m4_renderPendientes() {
     });
 
     let detalleStockConsignacion = cantidadArticulosDistintos > 0
-        ? `<div class="table-responsive"><table class="tabla-consignacion" style="width:100%;">
+        ? `<div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; font-size:11px; text-align:center;">
+            <div style="flex:1; min-width:90px; background:#f1f5f9; padding:8px; border-radius:6px;">Costo Total<br><b style="font-size:14px;">$${totalCostoConsignacion.toFixed(0)}</b></div>
+            <div style="flex:1; min-width:90px; background:#e0f2fe; padding:8px; border-radius:6px;">Venta Total<br><b style="font-size:14px;">$${totalValorConsignacion.toFixed(0)}</b></div>
+            <div style="flex:1; min-width:90px; background:#dcfce7; padding:8px; border-radius:6px;">Margen Total<br><b style="font-size:14px;">$${(totalValorConsignacion - totalCostoConsignacion).toFixed(0)}</b></div>
+         </div><div class="table-responsive"><table class="tabla-consignacion" style="width:100%;">
             <thead><tr>
                 <th style="text-align:left; padding:6px 4px; font-size:10px;">Producto</th>
                 <th style="padding:6px 4px; font-size:10px;">Cant.</th>
