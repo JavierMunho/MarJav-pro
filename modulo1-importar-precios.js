@@ -291,32 +291,8 @@ function m1_aplicarPreciosProveedor() {
 
     saveDB();
 
-    // Revisamos si algún precio fijado a mano quedó corto de margen con el costo nuevo.
-    let alertasMargen = [];
-    idsAplicados.forEach(pid => {
-        let producto = db.productos.find(p => p.id === pid);
-        if (!producto) return;
-        (db.listas || []).forEach(l => {
-            if (l.ocultos && l.ocultos.includes(pid)) return;
-            (l.columnas || []).forEach(c => {
-                if ((producto.esUnidad && c !== 'unidad') || (!producto.esUnidad && c === 'unidad')) return;
-                let keyCelda = `${pid}_${c}`;
-                if (l.celdasOcultas && l.celdasOcultas.includes(keyCelda)) return;
-                let keyPres = `${l.id}_${pid}_${c}`;
-                let manual = db.precios_manuales[keyPres];
-                if (manual === undefined) return; // no es precio fijo: ya se actualizó solo, no hace falta avisar
-
-                let colName = (l.nombresCols && l.nombresCols[c]) ? l.nombresCols[c] : c;
-                let nombrePres = db.pres_manuales[keyPres] || colName;
-                let costoEnvase = (l.costosEnvase && l.costosEnvase[c]) ? l.costosEnvase[c] : 0;
-                let recomendado = calcularPrecioBase(producto.costo, c, producto.esUnidad, l.margen, nombrePres, costoEnvase);
-
-                if (recomendado > manual) {
-                    alertasMargen.push({ key: keyPres, lista: l.nombre, producto: producto.nombre, presentacion: nombrePres, actual: manual, recomendado: recomendado, dif: recomendado - manual });
-                }
-            });
-        });
-    });
+    // Revisamos todas las listas: ¿algún precio quedó con menos margen que el de su lista?
+    let alertasMargen = m1_revisarMargenes(idsAplicados);
 
     document.getElementById('m1-texto-proveedor').value = '';
     document.getElementById('m1-pdf-proveedor').value = '';
@@ -333,10 +309,74 @@ function m1_aplicarPreciosProveedor() {
     }
 }
 
-// Muestra, después de aplicar los costos nuevos, SOLO los precios fijados a mano que
-// quedaron por debajo del margen esperado — para responder directo "¿qué tengo que
-// tocar en mis listas de venta para no perder margen?"
+// Costo real (sin margen) de una presentación, para calcular el margen real en %.
+function m1_costoRealPresentacion(costo, colId, esUnidad, nombrePres, costoEnvase) {
+    let kg;
+    let str = (nombrePres || '').toLowerCase().trim();
+    let num = parseFloat(str.replace(/[^0-9.,]/g, '').replace(',', '.'));
+    if (esUnidad || colId === 'unidad' || str.includes('unidad')) kg = 1;
+    else if (!isNaN(num) && num > 0 && str.includes('kg')) kg = num;
+    else if (!isNaN(num) && num > 0 && str.includes('g')) kg = num / 1000;
+    else kg = ({ '5kg': 5, '1kg': 1, '500g': 0.5, '250g': 0.25, '100g': 0.1 })[colId] || 1;
+    return costo * kg + (costoEnvase || 0);
+}
+
+// Revisa TODAS las listas (precios automáticos y fijados a mano) y devuelve los que
+// quedaron por debajo del precio que da el margen de su lista. pids = productos a revisar.
+function m1_revisarMargenes(pids) {
+    let alertas = [];
+    pids.forEach(pid => {
+        let producto = db.productos.find(p => p.id === pid);
+        if (!producto) return;
+        (db.listas || []).forEach(l => {
+            if (l.ocultos && l.ocultos.includes(pid)) return;
+            (l.columnas || []).forEach(c => {
+                if ((producto.esUnidad && c !== 'unidad') || (!producto.esUnidad && c === 'unidad')) return;
+                if (l.celdasOcultas && l.celdasOcultas.includes(`${pid}_${c}`)) return;
+                let keyPres = `${l.id}_${pid}_${c}`;
+                let colName = (l.nombresCols && l.nombresCols[c]) ? l.nombresCols[c] : c;
+                let nombrePres = db.pres_manuales[keyPres] || colName;
+                let costoEnvase = (l.costosEnvase && l.costosEnvase[c]) ? l.costosEnvase[c] : 0;
+                let recomendado = calcularPrecioBase(producto.costo, c, producto.esUnidad, l.margen, nombrePres, costoEnvase);
+                let manual = db.precios_manuales[keyPres];
+                let actual = manual !== undefined ? manual : recomendado;
+                if (recomendado > actual) {
+                    let costoReal = m1_costoRealPresentacion(producto.costo, c, producto.esUnidad, nombrePres, costoEnvase);
+                    let margenReal = costoReal > 0 ? ((actual / costoReal) - 1) * 100 : 0;
+                    alertas.push({ key: keyPres, lista: l.nombre, producto: producto.nombre, presentacion: nombrePres, actual: actual, recomendado: recomendado, dif: recomendado - actual, margenReal: margenReal, margenLista: l.margen });
+                }
+            });
+        });
+    });
+    return alertas;
+}
+
+// Aviso cuando se edita un costo a mano (no solo al importar el PDF).
+function m1_alertaTrasCambioCosto(pid) {
+    let alertas = m1_revisarMargenes([pid]);
+    if (alertas.length === 0) return;
+    let ov = document.getElementById('m1-margen-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'm1-margen-overlay';
+        ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; overflow:auto; padding:15px;';
+        document.body.appendChild(ov);
+    }
+    m1_destinoAlerta = 'm1-margen-overlay';
+    m1_mostrarAlertaMargen(alertas, 0);
+}
+
+// Muestra los precios que quedaron por debajo del margen de su lista, con el margen real en %.
 let m1_alertasMargenActuales = [];
+let m1_destinoAlerta = 'm1-revision-precios';
+
+function m1_cerrarAlertaMargen() {
+    let ov = document.getElementById('m1-margen-overlay');
+    if (ov) ov.remove();
+    let p = document.getElementById('m1-revision-precios');
+    if (p) p.innerHTML = '';
+    m1_destinoAlerta = 'm1-revision-precios';
+}
 
 function m1_mostrarAlertaMargen(alertas, aplicados) {
     alertas.sort((a, b) => b.dif - a.dif);
@@ -345,19 +385,24 @@ function m1_mostrarAlertaMargen(alertas, aplicados) {
         <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:12px;">
             <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:normal;">
                 <input type="checkbox" id="m1-margen-check-${idx}" checked style="width:16px; height:16px;">
-                ${a.lista} — ${a.producto} <span style="color:#999;">(${a.presentacion})</span>
+                <span>${a.lista} — ${a.producto} <span style="color:#999;">(${a.presentacion})</span><br>
+                <span style="color:var(--danger); font-size:11px;">Margen real ${a.margenReal.toFixed(1)}% (tu lista: ${a.margenLista}%)</span></span>
             </label>
             <span style="white-space:nowrap; margin-left:8px;">$${a.actual} → <b style="color:var(--danger);">$${a.recomendado}</b></span>
         </div>`).join('');
 
-    document.getElementById('m1-revision-precios').innerHTML = `
+    let intro = aplicados > 0 ? `Ya actualizamos ${aplicados} costo(s) base. ` : 'Cambiaste un costo. ';
+    let html = `
         <div style="background:#fdf2f2; border:1px solid #f5c6cb; border-radius:10px; padding:14px;">
-            <b style="color:var(--danger); font-size:13px;">⚠️ ${alertas.length} precio(s) fijado(s) a mano quedaron cortos de margen</b>
-            <p style="font-size:11px; color:#555; margin:8px 0;">Ya actualizamos ${aplicados} costo(s) base. Estos precios de venta están fijados a mano en sus listas y, con el costo nuevo, ya no te dejan el margen configurado para esa lista. Tildá los que querés subir al recomendado:</p>
+            <b style="color:var(--danger); font-size:13px;">⚠️ ${alertas.length} precio(s) con menos margen del que pusiste en la lista</b>
+            <p style="font-size:11px; color:#555; margin:8px 0;">${intro}Con el costo nuevo, estos precios ya no te dejan el margen configurado en su lista. Tildá los que querés subir al recomendado:</p>
             ${filas}
             <button class="btn btn-success" style="margin-top:12px;" onclick="m1_aplicarAlertaMargen()">✅ Actualizar los tildados</button>
+            <button class="btn" style="margin-top:12px;" onclick="m1_cerrarAlertaMargen()">Ahora no</button>
             <p style="font-size:10px; color:#888; margin-top:8px;">Los que no tildes quedan como están — los podés cambiar después a mano en el editor de esa lista.</p>
         </div>`;
+    let dest = document.getElementById(m1_destinoAlerta);
+    if (dest) dest.innerHTML = html;
 }
 
 function m1_aplicarAlertaMargen() {
@@ -373,7 +418,7 @@ function m1_aplicarAlertaMargen() {
 
     saveDB();
     alert(`✅ Se actualizaron ${aplicados} precio(s) fijo(s) en sus listas.`);
-    document.getElementById('m1-revision-precios').innerHTML = '';
+    m1_cerrarAlertaMargen();
     m1_alertasMargenActuales = [];
     let listaSel = document.getElementById('m1-lista-select');
     if (listaSel && listaSel.value && typeof m1_renderMatrizLista === 'function') m1_renderMatrizLista(true);

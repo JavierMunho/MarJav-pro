@@ -1125,7 +1125,7 @@
         let val = parseFloat(valorInput);
         if (lid === 'proveedor') {
             let prod = db.productos.find(p => p.id === pid);
-            if (prod && !isNaN(val) && val > 0) { prod.costo = val; saveDB(); }
+            if (prod && !isNaN(val) && val > 0) { prod.costo = val; saveDB(); if (typeof m1_alertaTrasCambioCosto === 'function') setTimeout(() => m1_alertaTrasCambioCosto(pid), 100); }
         } else {
             let key = `${lid}_${pid}_${colId}`;
             if (isNaN(val) || valorInput === "") delete db.precios_manuales[key]; 
