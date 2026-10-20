@@ -1872,6 +1872,7 @@
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
                     <button onclick="m2_abrirWhatsapp('${cid}')" style="background:#25D366; color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">💬 WhatsApp</button>
                     <button onclick="m2_editarCliente('${cid}')" style="background:var(--info); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">✏️ Editar datos</button>
+                    <button onclick="m2_editarMargenSugerido('${cid}')" style="background:#8e44ad; color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">🏷️ % sugerido (${m2_pctSugerido(cid)}%)</button>
                     <button onclick="m2_registrarPago('${cid}')" style="background:var(--success); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">💰 Registrar Pago</button>
                     <button onclick="m2_borrarCliente('${cid}')" style="background:var(--danger); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:bold; cursor:pointer;">🗑️ Borrar Local</button>
                 </div>
@@ -2277,7 +2278,7 @@
             db.stock_consignacion[cid][p.id] = { cant: fin, pV: pActualNuevo };
 
             lineasPlanilla.push({
-                fam: p.familia, pid: p.id, nom: p.nombre, pV: pCobro,
+                fam: p.familia, pid: p.id, nom: p.nombre, pV: pCobro, pNuevo: pActualNuevo,
                 ant: ant, cont: String(cont), vend: vend, repo: repoStr, fin: fin
             });
         });
@@ -2897,6 +2898,43 @@
         } catch(e) { alert("⚠️ Error PDF: " + e.message); }
     }
 
+    // % de margen sugerido para el público, editable por cliente (45% por defecto)
+    function m2_pctSugerido(cid) {
+        let c = db.clientes.find(x => x.id === cid);
+        return (c && c.margenSugerido !== undefined && c.margenSugerido !== null && !isNaN(c.margenSugerido)) ? c.margenSugerido : 45;
+    }
+
+    function m2_editarMargenSugerido(cid) {
+        let c = db.clientes.find(x => x.id === cid);
+        if (!c) return;
+        let v = prompt(`% de margen sugerido para ${c.nombre} (se suma al precio que le ponemos):`, m2_pctSugerido(cid));
+        if (v === null) return;
+        let n = parseFloat(String(v).replace(',', '.'));
+        if (isNaN(n) || n < 0) return alert("⚠️ Ingresá un número válido (ej: 45).");
+        c.margenSugerido = n;
+        saveDB();
+        m2_abrirPlanillaMaestra();
+    }
+
+    // Precio sugerido de venta al público: el precio que ponemos nosotros + el % del cliente
+    function m2_precioSugerido45(precioNuestro, cid) {
+        if (!precioNuestro || precioNuestro <= 0) return null;
+        return redondear(precioNuestro * (1 + m2_pctSugerido(cid) / 100));
+    }
+
+    // Devuelve el precio nuevo si cambió respecto del que se cobró en esa visita; si no, null.
+    function m2_precioNuevoItem(h, i) {
+        let n = i.pNuevo;
+        if (n === undefined) {
+            let ultima = db.historial_consignacion.filter(x => x.clienteId === h.clienteId && !x.tipo).pop();
+            if (ultima && ultima.id === h.id) {
+                let so = db.stock_consignacion[h.clienteId] && db.stock_consignacion[h.clienteId][i.pid];
+                n = so ? so.pV : undefined;
+            }
+        }
+        return (n && n > 0 && n !== i.pV) ? n : null;
+    }
+
     // AQUI MODIFIQUE LAS FECHAS AUTOMATICAS EN EL PDF
     function exportarPDFConsignacionFoto(historyId) {
         try {
@@ -2923,23 +2961,32 @@
             db.familias.forEach(f => {
                 let itemsFam = h.planilla.filter(x => x.fam === f);
                 if(itemsFam.length > 0) {
-                    bodyData.push([{ content: f.toUpperCase(), colSpan: 7, styles: { fillColor: [210, 210, 210], fontStyle: 'bold', halign: 'center' } }]);
+                    bodyData.push([{ content: f.toUpperCase(), colSpan: 8, styles: { fillColor: [210, 210, 210], fontStyle: 'bold', halign: 'center' } }]);
                     itemsFam.forEach(i => {
                         let pFull = db.productos.find(prod => prod.id === i.pid);
                         let nombreDisplay = i.nom;
                         if (pFull && pFull.descripcion && pFull.descripcion.trim() !== "") nombreDisplay += `\n(${pFull.descripcion})`;
                         let strCont = i.cont === "" ? "-" : i.cont;
                         let strRepo = i.repo === "" ? "-" : i.repo;
-                        bodyData.push([nombreDisplay, `$${i.pV}`, i.ant.toString(), strCont, i.vend.toString(), strRepo, i.fin.toString()]);
+                        let pNuevo = m2_precioNuevoItem(h, i);
+                        if (pNuevo) nombreDisplay += `\n** NUEVO PRECIO: $${pNuevo} **`;
+                        let sug = m2_precioSugerido45(pNuevo || i.pV, h.clienteId);
+                        bodyData.push([nombreDisplay, pNuevo ? `$${i.pV}\n>> $${pNuevo}` : `$${i.pV}`, i.ant.toString(), strCont, i.vend.toString(), strRepo, i.fin.toString(), sug ? `$${sug}` : '-']);
                     });
                 }
             });
-            bodyData.push([{content: 'Total:', colSpan: 4, styles: {fontStyle: 'bold', halign: 'right'}}, {content: `$${h.vendidoTotal}`, colSpan: 3, styles: {fontStyle: 'bold', textColor: [0,0,200]}}]);
+            bodyData.push([{content: 'Total:', colSpan: 4, styles: {fontStyle: 'bold', halign: 'right'}}, {content: `$${h.vendidoTotal}`, colSpan: 4, styles: {fontStyle: 'bold', textColor: [0,0,200]}}]);
 
             doc.autoTable({
-                startY: 36, head: [['Producto', 'Precio', 'Stock ant', 'Conteo', 'Vendido', 'Reponer', 'Stock']], body: bodyData, theme: 'grid',
+                startY: 36, head: [['Producto', 'Precio', 'Stock ant', 'Conteo', 'Vendido', 'Reponer', 'Stock', 'Sug. ' + m2_pctSugerido(h.clienteId) + '%']], body: bodyData, theme: 'grid',
+                didParseCell: function(data) {
+                    if (data.section === 'body' && typeof data.cell.raw === 'string' && (data.cell.raw.indexOf('NUEVO PRECIO') >= 0 || data.cell.raw.indexOf('>>') >= 0)) {
+                        data.cell.styles.fillColor = [255, 243, 205]; data.cell.styles.textColor = [170, 70, 0]; data.cell.styles.fontStyle = 'bold';
+                    }
+                    if (data.section === 'body' && data.column.index === 7) { data.cell.styles.textColor = [0, 100, 60]; data.cell.styles.fontStyle = 'bold'; }
+                },
                 styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
-                columnStyles: { 0: { cellWidth: 70 }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' }, 5: { halign: 'center' }, 6: { halign: 'center', fontStyle: 'bold' } }
+                columnStyles: { 0: { cellWidth: 58 }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' }, 5: { halign: 'center' }, 6: { halign: 'center', fontStyle: 'bold' }, 7: { halign: 'center' } }
             });
 
             let finalY = doc.lastAutoTable.finalY + 10;
@@ -3126,16 +3173,20 @@
                 itemsFam.forEach(i => {
                     let strCont = i.cont === "" ? "-" : i.cont;
                     let strRepo = i.repo === "" ? "-" : i.repo;
-                    filasFam += `<tr>
-                        <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:left; font-size:11px;">${i.nom}</td>
+                    let pNuevoI = m2_precioNuevoItem(h, i);
+                    let sugI = m2_precioSugerido45(pNuevoI || i.pV, h.clienteId);
+                    let avisoPrecio = pNuevoI ? `<div style="margin-top:3px; background:#fff3cd; color:#aa4600; border:1px solid #f0c36d; border-radius:4px; padding:2px 5px; font-size:10px; font-weight:bold; display:inline-block;">🔔 NUEVO PRECIO: $${i.pV} → $${pNuevoI}</div>` : '';
+                    filasFam += `<tr${pNuevoI ? ' style="background:#fffbeb;"' : ''}>
+                        <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:left; font-size:11px;">${i.nom}${avisoPrecio}</td>
                         <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px;">${i.ant}</td>
                         <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px;">${strCont}</td>
                         <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px; font-weight:bold; color:#c0392b;">${i.vend}</td>
                         <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px;">${strRepo}</td>
                         <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px; font-weight:bold; color:#27ae60;">${i.fin}</td>
+                        <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px; font-weight:bold; color:#006b3c;">${sugI ? '$' + sugI : '-'}</td>
                     </tr>`;
                 });
-                filasHtml += `<tr><td colspan="6" style="background:#e8f4f8; padding:6px; font-size:10px; font-weight:bold; color:#2980b9; text-transform:uppercase;">${f}</td></tr>` + filasFam;
+                filasHtml += `<tr><td colspan="7" style="background:#e8f4f8; padding:6px; font-size:10px; font-weight:bold; color:#2980b9; text-transform:uppercase;">${f}</td></tr>` + filasFam;
             });
 
             let temp = document.createElement('div');
@@ -3159,6 +3210,7 @@
                                     <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Vend.</th>
                                     <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Repo.</th>
                                     <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Stock</th>
+                                    <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#006b3c;">Sug. ${m2_pctSugerido(h.clienteId)}%</th>
                                 </tr>
                             </thead>
                             <tbody>${filasHtml}</tbody>
