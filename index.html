@@ -1125,7 +1125,7 @@
         let val = parseFloat(valorInput);
         if (lid === 'proveedor') {
             let prod = db.productos.find(p => p.id === pid);
-            if (prod && !isNaN(val) && val > 0) { prod.costo = val; saveDB(); if (typeof m1_alertaTrasCambioCosto === 'function') setTimeout(() => m1_alertaTrasCambioCosto(pid), 100); }
+            if (prod && !isNaN(val) && val > 0) { let costoViejo = prod.costo; prod.costo = val; saveDB(); if (typeof m1_alertaTrasCambioCosto === 'function') setTimeout(() => m1_alertaTrasCambioCosto(pid, costoViejo), 100); }
         } else {
             let key = `${lid}_${pid}_${colId}`;
             if (isNaN(val) || valorInput === "") delete db.precios_manuales[key]; 
@@ -2123,7 +2123,7 @@
 
                 if(vend > 0) {
                     let pCobro = parseInt(document.getElementById(`m2-pcobro-${p.id}`).value);
-                    total += vend * pCobro;
+                    total += m2_valorLinea(cid, p.id, vend, pCobro, null);
                 }
             }
         });
@@ -2172,8 +2172,9 @@
 
             if (contStr !== "") huboConteo = true;
 
-            items[p.id] = { ant: ant, cont: cont, vend: vend, pCobro: pCobro };
-            if (vend > 0) totalVendido += vend * pCobro;
+            let valorItem = vend > 0 ? m2_valorVenta(stockObj, vend, pCobro) : 0;
+            items[p.id] = { ant: ant, cont: cont, vend: vend, pCobro: pCobro, valor: valorItem };
+            totalVendido += valorItem;
         });
 
         if (!huboConteo) return alert("⚠️ No cargaste ningún conteo todavía.");
@@ -2212,11 +2213,13 @@
         if (nuevoVend < 0) nuevoVend = 0;
 
         // Ajustamos el total a cobrar: sacamos lo que aportaba el valor viejo y sumamos el nuevo.
-        pendiente.totalVendido -= (item.vend * item.pCobro);
-        pendiente.totalVendido += (nuevoVend * item.pCobro);
+        let valorViejo = (item.valor !== undefined) ? item.valor : (item.vend * item.pCobro);
+        let valorNuevo = nuevoVend > 0 ? m2_valorVenta(db.stock_consignacion[cid] && db.stock_consignacion[cid][pid], nuevoVend, item.pCobro) : 0;
+        pendiente.totalVendido += (valorNuevo - valorViejo);
 
         item.cont = nuevoCont;
         item.vend = nuevoVend;
+        item.valor = valorNuevo;
 
         saveDB();
         alert("✅ Conteo corregido.");
@@ -2275,10 +2278,12 @@
             let pActualEl = document.getElementById(`m2-pactual-${p.id}`);
             let pActualNuevo = pActualEl ? parseInt(pActualEl.value) : pCobro;
 
+            let valorLinea = (pendiente && pendiente.items[p.id] && pendiente.items[p.id].valor !== undefined) ? pendiente.items[p.id].valor : m2_valorVenta(stockObjPrevio, vend, pCobro);
+            // Lo vendido ya se cobró con el precio anterior; desde la reposición, TODO lo que queda vale el precio nuevo.
             db.stock_consignacion[cid][p.id] = { cant: fin, pV: pActualNuevo };
 
             lineasPlanilla.push({
-                fam: p.familia, pid: p.id, nom: p.nombre, pV: pCobro, pNuevo: pActualNuevo,
+                fam: p.familia, pid: p.id, nom: p.nombre, pV: pCobro, pNuevo: pActualNuevo, valor: valorLinea,
                 ant: ant, cont: String(cont), vend: vend, repo: repoStr, fin: fin
             });
         });
@@ -2404,7 +2409,8 @@
         item.fin = nuevoFin;
 
         // Recalculamos el total vendido de toda la visita a partir de la planilla corregida
-        let nuevoVendidoTotal = h.planilla.reduce((s, i) => s + (i.vend * i.pV), 0);
+        item.valor = nuevoVend * item.pV;
+        let nuevoVendidoTotal = h.planilla.reduce((s, i) => s + (i === item ? i.valor : (i.valor !== undefined ? i.valor : i.vend * i.pV)), 0);
         let deudaAnteriorDeEstaVisita = h.debeGenerado;
         let nuevoDebe = (nuevoVendidoTotal - (h.descuento || 0)) - h.cobrado;
 
@@ -2856,8 +2862,9 @@
                         pCobro = pCobroEl ? parseInt(pCobroEl.value) : 0;
                     }
                     if (ant === 0 && cont === 0) return;
-                    itemsFam.push([p.nombre, `$${pCobro}`, ant.toString(), cont.toString(), vend.toString(), vend > 0 ? `$${vend * pCobro}` : '-']);
-                    if (vend > 0) totalVendido += vend * pCobro;
+                    let valorL = vend > 0 ? m2_valorLinea(cid, p.id, vend, pCobro, pendiente ? pendiente.items[p.id] : null) : 0;
+                    itemsFam.push([p.nombre, `$${pCobro}`, ant.toString(), cont.toString(), vend.toString(), vend > 0 ? `$${valorL}` : '-']);
+                    totalVendido += valorL;
                 });
                 if (itemsFam.length > 0) {
                     bodyData.push([{ content: f.toUpperCase(), colSpan: 6, styles: { fillColor: [210, 210, 210], fontStyle: 'bold', halign: 'center' } }]);
@@ -2896,6 +2903,59 @@
 
             doc.save(`Conteo_${c.nombre.replace(/\s+/g, '_')}_${fechaConteo.replace(/\//g, '-')}.pdf`);
         } catch(e) { alert("⚠️ Error PDF: " + e.message); }
+    }
+
+    // ---------- LOTES DE STOCK (cada reposición conserva su propio precio) ----------
+    // stock = { cant, pV, lotes: [{c, p}, ...] }  (lotes del más viejo al más nuevo; pV = precio del lote más viejo)
+    function m2_lotesDe(so) {
+        if (!so) return [];
+        let l = Array.isArray(so.lotes) ? so.lotes.filter(x => x.c > 0) : [];
+        let suma = l.reduce((t, x) => t + x.c, 0);
+        if (l.length === 0 || suma !== so.cant) return so.cant > 0 ? [{ c: so.cant, p: so.pV || 0 }] : [];
+        return l;
+    }
+
+    // Lo vendido sale primero del lote más viejo y se cobra a SU precio.
+    function m2_valorVenta(so, vend, pFallback) {
+        let restante = vend, total = 0;
+        m2_lotesDe(so).forEach(x => {
+            if (restante <= 0) return;
+            let q = Math.min(restante, x.c);
+            total += q * (x.p > 0 ? x.p : (pFallback || 0));
+            restante -= q;
+        });
+        if (restante > 0) total += restante * (pFallback || 0);
+        return total;
+    }
+
+    // Arma el stock nuevo: lo que queda (después de vender del más viejo) + lo repuesto al precio nuevo.
+    function m2_stockDespuesDeVenta(so, vend, pFallback, repo, pRepo) {
+        let restante = vend, lotes = [];
+        m2_lotesDe(so).forEach(x => {
+            let p = x.p > 0 ? x.p : (pFallback || 0);
+            let q = x.c;
+            if (restante > 0) { let t = Math.min(restante, q); q -= t; restante -= t; }
+            if (q > 0) lotes.push({ c: q, p: p });
+        });
+        if (repo > 0) lotes.push({ c: repo, p: pRepo });
+        let comp = [];
+        lotes.forEach(x => {
+            if (comp.length && comp[comp.length - 1].p === x.p) comp[comp.length - 1].c += x.c;
+            else comp.push({ c: x.c, p: x.p });
+        });
+        let cant = comp.reduce((t, x) => t + x.c, 0);
+        return { cant: cant, pV: comp.length ? comp[0].p : pRepo, lotes: comp };
+    }
+
+    // Valor de venta de lo que hay en stock (para Finanzas)
+    function m2_valorStock(so) {
+        return m2_lotesDe(so).reduce((t, x) => t + x.c * (x.p || 0), 0);
+    }
+
+    // Valor de lo vendido de un producto: el del conteo guardado si existe, o se calcula del stock actual.
+    function m2_valorLinea(cid, pid, vend, pCobro, itemPend) {
+        if (itemPend && itemPend.valor !== undefined) return itemPend.valor;
+        return m2_valorVenta(db.stock_consignacion[cid] && db.stock_consignacion[cid][pid], vend, pCobro);
     }
 
     // % de margen sugerido para el público, editable por cliente (45% por defecto)
@@ -3095,13 +3155,14 @@
                         pCobro = pCobroEl ? parseInt(pCobroEl.value) : 0;
                     }
                     if (ant === 0 && cont === 0) return;
-                    if (vend > 0) totalVendido += vend * pCobro;
+                    let valorL = vend > 0 ? m2_valorLinea(cid, p.id, vend, pCobro, pendiente ? pendiente.items[p.id] : null) : 0;
+                    totalVendido += valorL;
                     itemsFam += `<tr>
                         <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:left; font-size:12px;">${p.nombre}</td>
                         <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:center; font-size:12px;">${ant}</td>
                         <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:center; font-size:12px;">${cont}</td>
                         <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:center; font-size:12px; font-weight:bold; color:#c0392b;">${vend}</td>
-                        <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:right; font-size:12px; font-weight:bold;">${vend > 0 ? '$' + (vend * pCobro) : '-'}</td>
+                        <td style="padding:7px 5px; border-bottom:1px solid #eee; text-align:right; font-size:12px; font-weight:bold;">${vend > 0 ? '$' + valorL : '-'}</td>
                     </tr>`;
                 });
                 if (itemsFam !== "") {
@@ -3178,6 +3239,7 @@
                     let avisoPrecio = pNuevoI ? `<div style="margin-top:3px; background:#fff3cd; color:#aa4600; border:1px solid #f0c36d; border-radius:4px; padding:2px 5px; font-size:10px; font-weight:bold; display:inline-block;">🔔 NUEVO PRECIO: $${i.pV} → $${pNuevoI}</div>` : '';
                     filasFam += `<tr${pNuevoI ? ' style="background:#fffbeb;"' : ''}>
                         <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:left; font-size:11px;">${i.nom}${avisoPrecio}</td>
+                        <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px;">${pNuevoI ? `<span style="text-decoration:line-through; color:#999;">$${i.pV}</span><br><b style="color:#aa4600;">$${pNuevoI}</b>` : '$' + i.pV}</td>
                         <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px;">${i.ant}</td>
                         <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px;">${strCont}</td>
                         <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px; font-weight:bold; color:#c0392b;">${i.vend}</td>
@@ -3186,7 +3248,7 @@
                         <td style="padding:6px 4px; border-bottom:1px solid #eee; text-align:center; font-size:11px; font-weight:bold; color:#006b3c;">${sugI ? '$' + sugI : '-'}</td>
                     </tr>`;
                 });
-                filasHtml += `<tr><td colspan="7" style="background:#e8f4f8; padding:6px; font-size:10px; font-weight:bold; color:#2980b9; text-transform:uppercase;">${f}</td></tr>` + filasFam;
+                filasHtml += `<tr><td colspan="8" style="background:#e8f4f8; padding:6px; font-size:10px; font-weight:bold; color:#2980b9; text-transform:uppercase;">${f}</td></tr>` + filasFam;
             });
 
             let temp = document.createElement('div');
@@ -3205,6 +3267,7 @@
                             <thead>
                                 <tr>
                                     <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:left; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Producto</th>
+                                    <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Precio</th>
                                     <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Ant.</th>
                                     <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Cont.</th>
                                     <th style="padding:6px 4px; border-bottom:2px solid #2c3e50; text-align:center; font-size:9.5px; text-transform:uppercase; color:#2c3e50;">Vend.</th>

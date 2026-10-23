@@ -276,6 +276,7 @@ function m1_verImpactoListas(idx) {
 function m1_aplicarPreciosProveedor() {
     let aplicados = 0;
     let idsAplicados = [];
+    let cambiosCosto = [];
     m1_resultadosRevisionPrecios.forEach((r, idx) => {
         let check = document.getElementById(`m1-rev-check-${idx}`);
         if (!check || !check.checked) return;
@@ -284,7 +285,7 @@ function m1_aplicarPreciosProveedor() {
         if (isNaN(nuevoPrecio) || nuevoPrecio <= 0) return;
 
         let producto = db.productos.find(p => p.id === r.id);
-        if (producto) { producto.costo = nuevoPrecio; aplicados++; idsAplicados.push(producto.id); }
+        if (producto) { cambiosCosto.push({ pid: producto.id, viejo: producto.costo }); producto.costo = nuevoPrecio; aplicados++; idsAplicados.push(producto.id); }
     });
 
     if (aplicados === 0) return alert("⚠️ No seleccionaste ningún producto para actualizar.");
@@ -292,7 +293,7 @@ function m1_aplicarPreciosProveedor() {
     saveDB();
 
     // Revisamos todas las listas: ¿algún precio quedó con menos margen que el de su lista?
-    let alertasMargen = m1_revisarMargenes(idsAplicados);
+    let alertasMargen = m1_revisarMargenes(cambiosCosto);
 
     document.getElementById('m1-texto-proveedor').value = '';
     document.getElementById('m1-pdf-proveedor').value = '';
@@ -321,30 +322,31 @@ function m1_costoRealPresentacion(costo, colId, esUnidad, nombrePres, costoEnvas
     return costo * kg + (costoEnvase || 0);
 }
 
-// Revisa TODAS las listas (precios automáticos y fijados a mano) y devuelve los que
-// quedaron por debajo del precio que da el margen de su lista. pids = productos a revisar.
-function m1_revisarMargenes(pids) {
+// Si el costo SUBE un X%, los precios fijados a mano en TODAS las listas (incluida consignación)
+// se proponen con el mismo X% de aumento, sin recalcular margen. cambios = [{pid, viejo}]
+function m1_redondearAumento(p) {
+    return p < 500 ? Math.round(p / 5) * 5 : Math.round(p / 10) * 10;
+}
+
+function m1_revisarMargenes(cambios) {
     let alertas = [];
-    pids.forEach(pid => {
-        let producto = db.productos.find(p => p.id === pid);
-        if (!producto) return;
+    cambios.forEach(cb => {
+        let producto = db.productos.find(p => p.id === cb.pid);
+        if (!producto || !(cb.viejo > 0) || !(producto.costo > cb.viejo)) return; // solo si el costo subió
+        let ratio = producto.costo / cb.viejo;
+        let pct = (ratio - 1) * 100;
         (db.listas || []).forEach(l => {
-            if (l.ocultos && l.ocultos.includes(pid)) return;
+            if (l.ocultos && l.ocultos.includes(cb.pid)) return;
             (l.columnas || []).forEach(c => {
                 if ((producto.esUnidad && c !== 'unidad') || (!producto.esUnidad && c === 'unidad')) return;
-                if (l.celdasOcultas && l.celdasOcultas.includes(`${pid}_${c}`)) return;
-                let keyPres = `${l.id}_${pid}_${c}`;
+                if (l.celdasOcultas && l.celdasOcultas.includes(`${cb.pid}_${c}`)) return;
+                let keyPres = `${l.id}_${cb.pid}_${c}`;
+                let manual = db.precios_manuales[keyPres];
+                if (manual === undefined) return; // los automáticos ya se actualizan solos
                 let colName = (l.nombresCols && l.nombresCols[c]) ? l.nombresCols[c] : c;
                 let nombrePres = db.pres_manuales[keyPres] || colName;
-                let costoEnvase = (l.costosEnvase && l.costosEnvase[c]) ? l.costosEnvase[c] : 0;
-                let recomendado = calcularPrecioBase(producto.costo, c, producto.esUnidad, l.margen, nombrePres, costoEnvase);
-                let manual = db.precios_manuales[keyPres];
-                let actual = manual !== undefined ? manual : recomendado;
-                if (recomendado > actual) {
-                    let costoReal = m1_costoRealPresentacion(producto.costo, c, producto.esUnidad, nombrePres, costoEnvase);
-                    let margenReal = costoReal > 0 ? ((actual / costoReal) - 1) * 100 : 0;
-                    alertas.push({ key: keyPres, lista: l.nombre, producto: producto.nombre, presentacion: nombrePres, actual: actual, recomendado: recomendado, dif: recomendado - actual, margenReal: margenReal, margenLista: l.margen });
-                }
+                let nuevo = m1_redondearAumento(manual * ratio);
+                if (nuevo > manual) alertas.push({ key: keyPres, lista: l.nombre, producto: producto.nombre, presentacion: nombrePres, actual: manual, recomendado: nuevo, dif: nuevo - manual, pct: pct });
             });
         });
     });
@@ -352,8 +354,8 @@ function m1_revisarMargenes(pids) {
 }
 
 // Aviso cuando se edita un costo a mano (no solo al importar el PDF).
-function m1_alertaTrasCambioCosto(pid) {
-    let alertas = m1_revisarMargenes([pid]);
+function m1_alertaTrasCambioCosto(pid, costoViejo) {
+    let alertas = m1_revisarMargenes([{ pid: pid, viejo: costoViejo }]);
     if (alertas.length === 0) return;
     let ov = document.getElementById('m1-margen-overlay');
     if (!ov) {
@@ -386,16 +388,16 @@ function m1_mostrarAlertaMargen(alertas, aplicados) {
             <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:normal;">
                 <input type="checkbox" id="m1-margen-check-${idx}" checked style="width:16px; height:16px;">
                 <span>${a.lista} — ${a.producto} <span style="color:#999;">(${a.presentacion})</span><br>
-                <span style="color:var(--danger); font-size:11px;">Margen real ${a.margenReal.toFixed(1)}% (tu lista: ${a.margenLista}%)</span></span>
+                <span style="color:#555; font-size:11px;">Costo +${a.pct.toFixed(1)}% → mismo aumento a tu precio</span></span>
             </label>
-            <span style="white-space:nowrap; margin-left:8px;">$${a.actual} → <b style="color:var(--danger);">$${a.recomendado}</b></span>
+            <span style="white-space:nowrap; margin-left:8px;">$${a.actual} → $<input type="number" id="m1-margen-precio-${idx}" value="${a.recomendado}" style="width:70px; padding:4px; margin:0; font-size:12px; font-weight:bold; text-align:right;"></span>
         </div>`).join('');
 
     let intro = aplicados > 0 ? `Ya actualizamos ${aplicados} costo(s) base. ` : 'Cambiaste un costo. ';
     let html = `
         <div style="background:#fdf2f2; border:1px solid #f5c6cb; border-radius:10px; padding:14px;">
-            <b style="color:var(--danger); font-size:13px;">⚠️ ${alertas.length} precio(s) con menos margen del que pusiste en la lista</b>
-            <p style="font-size:11px; color:#555; margin:8px 0;">${intro}Con el costo nuevo, estos precios ya no te dejan el margen configurado en su lista. Tildá los que querés subir al recomendado:</p>
+            <b style="color:var(--danger); font-size:13px;">⚠️ Subió el costo: ${alertas.length} precio(s) fijado(s) a mano para actualizar</b>
+            <p style="font-size:11px; color:#555; margin:8px 0;">${intro}Proponemos subir tus precios fijados a mano el mismo % que subió el costo (el margen no se recalcula). Podés cambiar el valor o destildar los que no querés tocar:</p>
             ${filas}
             <button class="btn btn-success" style="margin-top:12px;" onclick="m1_aplicarAlertaMargen()">✅ Actualizar los tildados</button>
             <button class="btn" style="margin-top:12px;" onclick="m1_cerrarAlertaMargen()">Ahora no</button>
@@ -410,7 +412,10 @@ function m1_aplicarAlertaMargen() {
     m1_alertasMargenActuales.forEach((a, idx) => {
         let check = document.getElementById(`m1-margen-check-${idx}`);
         if (!check || !check.checked) return;
-        db.precios_manuales[a.key] = a.recomendado;
+        let inp = document.getElementById(`m1-margen-precio-${idx}`);
+        let nuevoV = inp ? parseFloat(inp.value) : a.recomendado;
+        if (isNaN(nuevoV) || nuevoV <= 0) return;
+        db.precios_manuales[a.key] = nuevoV;
         aplicados++;
     });
 
