@@ -904,12 +904,12 @@
         if(pageId === 'page-m4') initM4();
     }
 
-    // % sugerido para el público en una lista (editable). Mayorista fraccionado: 45% por defecto. 0 = sin sugerido.
+    // % sugerido para el público en una lista (editable). Listas "Fraccionado...": 45% por defecto. 0 = sin sugerido.
     function m1_pctSugeridoLista(lista) {
         if (!lista) return 0;
         if (lista.sugeridoPct !== undefined && lista.sugeridoPct !== null && !isNaN(lista.sugeridoPct)) return lista.sugeridoPct;
         let n = (lista.nombre || '').toLowerCase();
-        return (n.includes('mayorista') && n.includes('fraccion')) ? 45 : 0;
+        return n.includes('fraccion') ? 45 : 0;
     }
     function m1_sugeridoLista(lista, precio) {
         let pct = m1_pctSugeridoLista(lista);
