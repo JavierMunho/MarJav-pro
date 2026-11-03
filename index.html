@@ -904,6 +904,23 @@
         if(pageId === 'page-m4') initM4();
     }
 
+    // % sugerido para el público en una lista (editable). Mayorista fraccionado: 45% por defecto. 0 = sin sugerido.
+    function m1_pctSugeridoLista(lista) {
+        if (!lista) return 0;
+        if (lista.sugeridoPct !== undefined && lista.sugeridoPct !== null && !isNaN(lista.sugeridoPct)) return lista.sugeridoPct;
+        let n = (lista.nombre || '').toLowerCase();
+        return (n.includes('mayorista') && n.includes('fraccion')) ? 45 : 0;
+    }
+    function m1_sugeridoLista(lista, precio) {
+        let pct = m1_pctSugeridoLista(lista);
+        return (pct > 0 && precio > 0) ? redondear(precio * (1 + pct / 100)) : null;
+    }
+    function m1_editarSugeridoLista(lid, v) {
+        let lista = db.listas.find(l => l.id === lid); let n = parseFloat(v);
+        if (!lista || isNaN(n) || n < 0) return;
+        lista.sugeridoPct = n; saveDB();
+    }
+
     function redondear(precio) {
         let p = Math.round(precio); let r = p % 100; let b = Math.floor(p / 100) * 100; return r <= 50 ? b : b + 100;
     }
@@ -1288,14 +1305,20 @@
                         let celdaOculta = lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda);
                         if (celdaOculta || ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad'))) {
                             filasHtml += `<td style="border-bottom:1px solid #f0f0f0; color:#ccc; text-align:center;">-</td>`;
+                            if (m1_pctSugeridoLista(lista) > 0) filasHtml += `<td style="border-bottom:1px solid #f0f0f0; color:#ccc; text-align:center;">-</td>`;
                         } else {
                             let colName = (lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c;
                             let keyPres = `${lista.id}_${p.id}_${c}`;
                             let nombrePres = db.pres_manuales[keyPres] || colName;
                             let precioData = obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen);
+                            let sugL = m1_sugeridoLista(lista, precioData.final);
                             filasHtml += `<td style="border-bottom:1px solid #f0f0f0; text-align:center; padding:6px;">
                                 <div style="font-size:12px; color:#e67e22; font-weight:bold; margin-bottom:3px; text-transform:uppercase;">${nombrePres}</div>
                                 <div style="font-size:18px; font-weight:900; color:#2c3e50;">$${precioData.final}</div>
+                            </td>`;
+                            if (m1_pctSugeridoLista(lista) > 0) filasHtml += `<td style="border-bottom:1px solid #f0f0f0; text-align:center; padding:6px; background:#f0faf4;">
+                                <div style="font-size:11px; color:#006b3c; font-weight:bold; margin-bottom:3px; text-transform:uppercase;">Sug. ${m1_pctSugeridoLista(lista)}%</div>
+                                <div style="font-size:18px; font-weight:900; color:#006b3c;">${sugL ? '$' + sugL : '-'}</div>
                             </td>`;
                         }
                     });
@@ -1422,15 +1445,21 @@
 
                             if (celdaOculta || ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad'))) {
                                 innerHtml += `<td style="border-bottom:1px solid #f0f0f0; color:#ccc; text-align:center;">-</td>`;
+                                if (m1_pctSugeridoLista(lista) > 0) innerHtml += `<td style="border-bottom:1px solid #f0f0f0; color:#ccc; text-align:center;">-</td>`;
                             } else {
                                 let colName = (lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c;
                                 let keyPres = `${lista.id}_${p.id}_${c}`;
                                 let nombrePres = db.pres_manuales[keyPres] || colName;
                                 let precioData = obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen);
+                                let sugL = m1_sugeridoLista(lista, precioData.final);
 
                                 innerHtml += `<td style="border-bottom:1px solid #f0f0f0; text-align:center; padding: 5px;">
                                     <div style="font-size:11px; color:var(--accent); font-weight:bold; margin-bottom:3px; text-transform:uppercase;">${nombrePres}</div>
                                     <div style="font-size:16px; font-weight:900; color:var(--dark);">$${precioData.final}</div>
+                                </td>`;
+                                if (m1_pctSugeridoLista(lista) > 0) innerHtml += `<td style="border-bottom:1px solid #f0f0f0; text-align:center; padding: 5px; background:#f0faf4;">
+                                    <div style="font-size:10px; color:#006b3c; font-weight:bold; margin-bottom:3px; text-transform:uppercase;">Sug. ${m1_pctSugeridoLista(lista)}%</div>
+                                    <div style="font-size:16px; font-weight:900; color:#006b3c;">${sugL ? '$' + sugL : '-'}</div>
                                 </td>`;
                             }
                         });
@@ -1500,6 +1529,10 @@
                 <div style="display:flex; align-items:center; gap:8px;">
                     <b style="font-size:12px; color:var(--primary);">Margen Global (%):</b>
                     <input type="number" id="m1-edit-margen" value="${lista.margen}" onchange="m1_editarMargenLista('${lista.id}', this.value)" style="width:70px; padding:6px; margin:0; font-size:13px; text-align:center;">
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <b style="font-size:12px; color:#006b3c;">Sugerido público (%):</b>
+                    <input type="number" value="${m1_pctSugeridoLista(lista)}" onchange="m1_editarSugeridoLista('${lista.id}', this.value)" style="width:70px; padding:6px; margin:0; font-size:13px; text-align:center;" title="0 = no mostrar precio sugerido">
                 </div>
                 <label class="chk-label" style="margin:0; padding:6px 10px; font-size:11px;"><input type="checkbox" id="m1-mostrar-ocultos" onchange="m1_renderMatrizLista(true)" ${isChecked}> Mostrar Ocultados (➕)</label>
                 ${checkColsHtml}
@@ -3327,7 +3360,11 @@
         let headers = ['PRODUCTO'];
         if(isProveedor) headers.push('COSTO BASE');
         else {
-            lista.columnas.forEach(c => headers.push(((lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c).toUpperCase()));
+            lista.columnas.forEach(c => {
+                let nomC = ((lista.nombresCols && lista.nombresCols[c]) ? lista.nombresCols[c] : c).toUpperCase();
+                headers.push(nomC);
+                if (m1_pctSugeridoLista(lista) > 0) headers.push(`SUG. ${m1_pctSugeridoLista(lista)}%\n${nomC}`);
+            });
         }
 
         let bodyData = [];
@@ -3346,9 +3383,14 @@
                     else {
                         lista.columnas.forEach(c => {
                             let keyCelda = `${p.id}_${c}`;
-                            if (lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda)) row.push('-');
-                            else if ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad')) row.push('-');
-                            else row.push(`$${obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen).final}`);
+                            let conSug = m1_pctSugeridoLista(lista) > 0;
+                            if (lista.celdasOcultas && lista.celdasOcultas.includes(keyCelda)) { row.push('-'); if (conSug) row.push('-'); }
+                            else if ((p.esUnidad && c !== 'unidad') || (!p.esUnidad && c === 'unidad')) { row.push('-'); if (conSug) row.push('-'); }
+                            else {
+                                let pf = obtenerPrecioFinal(lista.id, p.id, c, p.costo, p.esUnidad, lista.margen).final;
+                                row.push(`$${pf}`);
+                                if (conSug) { let sg = m1_sugeridoLista(lista, pf); row.push(sg ? `$${sg}` : '-'); }
+                            }
                         });
                     }
                     famRows.push(row);
@@ -3372,10 +3414,14 @@
             theme: 'striped',
             styles: { fontSize: 8.5, cellPadding: 1.5, valign: 'middle' },
             headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], halign: 'center', fontSize: 9 },
-            columnStyles: { 0: { cellWidth: 85, fontStyle: 'bold' } },
+            columnStyles: { 0: { cellWidth: (!isProveedor && m1_pctSugeridoLista(lista) > 0) ? 60 : 85, fontStyle: 'bold' } },
             didParseCell: function(data) {
                 if (data.section === 'body' && data.column.index > 0 && data.row.raw.length > 1) {
                     data.cell.styles.halign = 'center';
+                    // columnas de sugerido (las pares: 2, 4, ...) en verde
+                    if (!isProveedor && m1_pctSugeridoLista(lista) > 0 && data.column.index % 2 === 0) {
+                        data.cell.styles.textColor = [0, 107, 60]; data.cell.styles.fontStyle = 'bold';
+                    }
                 }
             },
             didDrawPage: function (data) {
