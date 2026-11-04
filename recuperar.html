@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recuperar datos — marJav Pro</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  body { font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background:#f4f6f8; margin:0; padding:14px; color:#2c3e50; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  h2 { font-size:16px; margin:22px 0 8px; }
+  .card { background:#fff; border-radius:12px; padding:14px; margin-bottom:12px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .warn { background:#fff3cd; border:1px solid #f0c36d; color:#7a4b00; }
+  .ok { background:#e8f7ee; border:1px solid #9bd5b0; }
+  button { border:none; border-radius:8px; padding:10px 14px; font-size:14px; font-weight:bold; cursor:pointer; margin:4px 4px 0 0; }
+  .b1 { background:#2980b9; color:#fff; } .b2 { background:#27ae60; color:#fff; } .b3 { background:#e67e22; color:#fff; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th, td { padding:6px 4px; border-bottom:1px solid #eee; text-align:center; }
+  th { font-size:10px; text-transform:uppercase; color:#666; }
+  .mejor { background:#e8f7ee; font-weight:bold; }
+  small { color:#777; }
+  #log { font-size:12px; white-space:pre-wrap; color:#555; }
+</style>
+</head>
+<body>
+<h1>🛟 Recuperar datos</h1>
+<small>Herramienta de emergencia. No borra nada por sí sola: siempre te baja un respaldo antes de restaurar.</small>
+
+<div class="card warn" style="margin-top:12px;">
+  Elegí la versión que tenga <b>más ventas / visitas / pedidos de hoy</b>. Antes de restaurar, se descarga automáticamente una copia de lo que hay ahora en la nube.
+</div>
+
+<h2>1) Copia guardada en ESTE dispositivo</h2>
+<div class="card" id="local-box">Buscando...</div>
+
+<h2>2) Versiones de la nube (última hora)</h2>
+<div class="card">
+  <button class="b1" onclick="buscarVersiones()">🔎 Buscar versiones de la última hora</button>
+  <div id="versiones" style="margin-top:10px;"></div>
+</div>
+
+<div id="log" class="card"></div>
+
+<script>
+const API_KEY = "AIzaSyDOR5J8h2aA7JHr27RwNR7tXXTMHFMKI4o";
+const PROYECTO = "marjav-pro";
+const URL_DOC = `https://firestore.googleapis.com/v1/projects/${PROYECTO}/databases/(default)/documents/marjavpro/principal`;
+firebase.initializeApp({ apiKey: API_KEY, authDomain: "marjav-pro.firebaseapp.com", projectId: PROYECTO, appId: "1:240648699932:web:2b252bd15e6a6eae96dfd9" });
+const fsdb = firebase.firestore();
+const REF = fsdb.collection('marjavpro').doc('principal');
+
+let candidatos = {}; // id -> datos
+
+function log(t) { document.getElementById('log').textContent += t + "\n"; }
+
+// ---- Conversión de formato REST de Firestore a objeto normal ----
+function pv(v) {
+  if (v.stringValue !== undefined) return v.stringValue;
+  if (v.integerValue !== undefined) return Number(v.integerValue);
+  if (v.doubleValue !== undefined) return v.doubleValue;
+  if (v.booleanValue !== undefined) return v.booleanValue;
+  if (v.arrayValue !== undefined) return (v.arrayValue.values || []).map(pv);
+  if (v.mapValue !== undefined) return pm(v.mapValue.fields || {});
+  return null;
+}
+function pm(f) { let o = {}; for (let k in f) o[k] = pv(f[k]); return o; }
+
+function resumen(d) {
+  let n = x => Array.isArray(x) ? x.length : (x && typeof x === 'object' ? Object.keys(x).length : 0);
+  let ult = (arr) => (Array.isArray(arr) && arr.length) ? (arr[arr.length - 1].fecha || '?') : '-';
+  return {
+    ventas: n(d.ventas), visitas: n(d.historial_consignacion), gastos: n(d.gastos),
+    clientes: n(d.clientes), pendientes: n(d.conteos_pendientes), productos: n(d.productos),
+    ultVenta: ult(d.ventas), ultVisita: ult(d.historial_consignacion)
+  };
+}
+function puntaje(r) { return r.ventas + r.visitas + r.gastos + r.pendientes; }
+
+function descargar(nombre, datos) {
+  let blob = new Blob([JSON.stringify(datos)], { type: 'application/json' });
+  let a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+}
+
+function fila(id, titulo, d, esMejor) {
+  let r = resumen(d);
+  return `<tr class="${esMejor ? 'mejor' : ''}"><td style="text-align:left">${titulo}</td><td>${r.ventas}</td><td>${r.visitas}</td><td>${r.gastos}</td><td>${r.pendientes}</td><td>${r.ultVenta}<br>${r.ultVisita}</td>
+    <td><button class="b1" onclick="bajar('${id}')">⬇️</button><button class="b2" onclick="restaurar('${id}')">♻️ Restaurar</button></td></tr>`;
+}
+function tabla(filas) {
+  return `<div style="overflow-x:auto"><table><thead><tr><th style="text-align:left">Versión</th><th>Ventas</th><th>Visitas</th><th>Gastos</th><th>Conteos pend.</th><th>Últ. venta / visita</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>`;
+}
+
+// ---- 1) Copia local ----
+(function() {
+  let box = document.getElementById('local-box');
+  try {
+    let raw = localStorage.getItem('mjp3_db_cache');
+    if (!raw) { box.innerHTML = 'No hay copia guardada en este dispositivo (probá abrir esta página desde el otro: celular o compu).'; return; }
+    let d = JSON.parse(raw);
+    candidatos['local'] = d;
+    box.innerHTML = tabla(fila('local', 'Este dispositivo', d, false)) + '<small>Es lo último que este dispositivo tenía guardado. Si acá están tus datos de hoy, descargala (⬇️) primero.</small>';
+  } catch (e) { box.textContent = 'No se pudo leer la copia local: ' + e.message; }
+})();
+
+// ---- 2) Versiones de la nube ----
+async function leerVersion(minAtras) {
+  let url = URL_DOC + '?key=' + API_KEY;
+  if (minAtras > 0) url += '&readTime=' + encodeURIComponent(new Date(Date.now() - minAtras * 60000).toISOString());
+  let resp = await fetch(url);
+  if (!resp.ok) { let t = await resp.text(); throw new Error('HTTP ' + resp.status + ' ' + t.slice(0, 200)); }
+  let j = await resp.json();
+  return pm(j.fields || {});
+}
+
+async function buscarVersiones() {
+  let cont = document.getElementById('versiones');
+  cont.textContent = 'Buscando...';
+  let minutos = [0, 3, 6, 10, 15, 20, 25, 30, 40, 50, 58];
+  let res = [];
+  for (let m of minutos) {
+    try {
+      let d = await leerVersion(m);
+      let id = 'nube' + m; candidatos[id] = d;
+      res.push({ id, m, d, p: puntaje(resumen(d)) });
+    } catch (e) {
+      log('No se pudo leer la versión de hace ' + m + ' min: ' + e.message);
+      if (m === 0) { cont.innerHTML = '⚠️ No se pudo leer la nube desde esta página. Mirá el detalle abajo.'; return; }
+    }
+  }
+  let max = Math.max(...res.map(r => r.p));
+  let hora = m => new Date(Date.now() - m * 60000).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  cont.innerHTML = tabla(res.map(r => fila(r.id, (r.m === 0 ? 'AHORA' : 'hace ' + r.m + ' min') + ' (' + hora(r.m) + ')', r.d, r.p === max && max > 0)).join('')) +
+    '<small>En verde la que tiene más movimientos. Si la versión de "ahora" tiene menos que una anterior, esa anterior es la que perdió datos.</small>';
+}
+
+function bajar(id) {
+  let d = candidatos[id]; if (!d) return;
+  descargar('marjav_respaldo_' + id + '_' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json', d);
+}
+
+async function restaurar(id) {
+  let d = candidatos[id]; if (!d) return;
+  let r = resumen(d);
+  if (!confirm('Vas a dejar en la nube esta versión:\n' + r.ventas + ' ventas, ' + r.visitas + ' visitas, ' + r.gastos + ' gastos, ' + r.pendientes + ' conteos pendientes.\n\nAntes se descarga una copia de lo que hay ahora. ¿Continuar?')) return;
+  try {
+    let actual = await leerVersion(0);
+    descargar('marjav_respaldo_ANTES_de_restaurar_' + Date.now() + '.json', actual);
+  } catch (e) {
+    if (!confirm('No pude bajar el respaldo de lo actual (' + e.message + '). ¿Restaurar igual?')) return;
+  }
+  try {
+    await REF.set(JSON.parse(JSON.stringify(d)));
+    document.getElementById('log').innerHTML = '<div class="ok" style="padding:10px;border-radius:8px;">✅ Restaurado. Ahora <b>cerrá del todo y volvé a abrir la app</b> en el celular y en la compu para que carguen esta versión.</div>';
+  } catch (e) {
+    alert('No se pudo restaurar: ' + e.message);
+  }
+}
+</script>
+</body>
+</html>
