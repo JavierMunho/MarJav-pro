@@ -647,6 +647,15 @@
     let modoCatalogo = false;
     let cloudOk = true;
     let guardadoPendiente = null;
+    // --- Sincronización segura entre dispositivos ---
+    // ultimoSync: lo último que sabemos que está en la nube, por sección (productos, listas, precios_manuales, ventas...).
+    // Al guardar solo se suben las secciones que ESTE dispositivo cambió, así un celular con datos viejos
+    // nunca pisa lo que se cambió desde la computadora. nubeCargada = false => arrancó sin conexión: no se sube nada.
+    let ultimoSync = {};
+    let nubeCargada = false;
+    let cacheArranque = {};
+    let paginaActualId = 'page-dashboard';
+    function snapshotClaves(obj) { let o = {}; for (let k in obj) o[k] = JSON.stringify(obj[k]); return o; }
 
     // Agrega productos nuevos del catálogo proveedor y prolija estructuras viejas.
     // Se corre siempre al cargar, tanto si los datos vinieron de la nube como de respaldo local.
@@ -705,16 +714,88 @@
             actualizarIndicador('⚠️ Sin conexión (guardado local)', '#e67e22');
             return;
         }
+        if (!nubeCargada) {
+            // Arrancó con datos locales viejos: NO se sube nada para no pisar la nube. Se resuelve al reconectar.
+            actualizarIndicador('⚠️ Modo local: esperando conexión (no se sube a la nube)', '#e67e22');
+            return;
+        }
         actualizarIndicador('💾 Guardando...', '#f1c40f');
         if (guardadoPendiente) clearTimeout(guardadoPendiente);
         guardadoPendiente = setTimeout(() => {
-            DOC_REF.set(db).then(() => {
+            guardadoPendiente = null;
+            let cambios = {}, firmas = {}, hay = false;
+            for (let k in db) {
+                let firma = JSON.stringify(db[k]);
+                if (firma !== ultimoSync[k]) { cambios[k] = db[k]; firmas[k] = firma; hay = true; }
+            }
+            if (!hay) { actualizarIndicador('☁️ Sincronizado', '#2ecc71'); return; }
+            DOC_REF.update(cambios).catch(err => {
+                if (err && err.code === 'not-found') return DOC_REF.set(db);
+                throw err;
+            }).then(() => {
+                for (let k in firmas) ultimoSync[k] = firmas[k];
                 actualizarIndicador('☁️ Sincronizado', '#2ecc71');
             }).catch(err => {
                 console.warn('No se pudo sincronizar con la nube:', err);
                 actualizarIndicador('⚠️ Sin conexión (guardado local)', '#e67e22');
             });
         }, 700);
+    }
+
+    // Aviso (sin pisar lo que estés escribiendo) cuando llegan datos nuevos desde otro dispositivo.
+    function mostrarAvisoNube() {
+        if (paginaActualId === 'page-dashboard') { nav('page-dashboard'); return; }
+        let av = document.getElementById('aviso-nube');
+        if (!av) {
+            av = document.createElement('div');
+            av.id = 'aviso-nube';
+            av.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:99999; background:#2980b9; color:#fff; padding:10px 14px; font-size:13px; font-weight:bold; display:flex; justify-content:space-between; align-items:center; gap:10px; box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+            document.body.appendChild(av);
+        }
+        av.innerHTML = `<span>🔄 Llegaron datos nuevos desde otro dispositivo</span><span><button onclick="document.getElementById('aviso-nube').remove(); nav(paginaActualId);" style="background:#fff; color:#2980b9; border:none; border-radius:6px; padding:6px 10px; font-weight:bold;">Ver ahora</button> <button onclick="document.getElementById('aviso-nube').remove();" style="background:none; color:#fff; border:1px solid #fff; border-radius:6px; padding:6px 8px;">✕</button></span>`;
+    }
+
+    // Escucha en vivo la nube: lo que se cambie desde otro dispositivo llega solo, sección por sección.
+    let escuchaIniciada = false;
+    function iniciarEscuchaNube() {
+        if (escuchaIniciada || !firebaseListo || !DOC_REF) return;
+        escuchaIniciada = true;
+        DOC_REF.onSnapshot(snap => {
+            if (!snap.exists || snap.metadata.hasPendingWrites) return; // eco de nuestro propio guardado
+            let remoto = snap.data();
+            if (!remoto || !Array.isArray(remoto.productos)) return;
+
+            if (!nubeCargada) {
+                // Arrancamos sin conexión con datos locales. Recién ahora hay datos reales de la nube.
+                if (snap.metadata.fromCache) return;
+                let editadas = Object.keys(db).filter(k => JSON.stringify(db[k]) !== cacheArranque[k]);
+                let subirLocal = editadas.length > 0 && confirm('Se recuperó la conexión.\n\nHiciste cambios sin conexión en: ' + editadas.join(', ') + '.\n\nAceptar = SUBIR esos cambios a la nube (lo demás se actualiza desde la nube).\nCancelar = DESCARTARLOS y traer todo lo de la nube.');
+                let nuevo = {};
+                for (let k in remoto) nuevo[k] = (subirLocal && editadas.includes(k)) ? db[k] : remoto[k];
+                db = nuevo;
+                ultimoSync = snapshotClaves(remoto);
+                nubeCargada = true;
+                try { normalizarDB(); } catch(e) {}
+                localStorage.setItem('mjp3_db_cache', JSON.stringify(db));
+                if (subirLocal) saveDB(); else actualizarIndicador('☁️ Sincronizado', '#2ecc71');
+                mostrarAvisoNube();
+                return;
+            }
+
+            let hubo = false;
+            for (let k in remoto) {
+                let sr = JSON.stringify(remoto[k]);
+                if (sr === ultimoSync[k]) continue;                    // esa sección no cambió en la nube
+                if (JSON.stringify(db[k]) !== ultimoSync[k]) continue; // este dispositivo tiene un cambio sin guardar: se respeta
+                db[k] = remoto[k]; ultimoSync[k] = sr; hubo = true;
+            }
+            if (hubo) {
+                try { normalizarDB(); } catch(e) {}
+                localStorage.setItem('mjp3_db_cache', JSON.stringify(db));
+                actualizarIndicador('☁️ Sincronizado', '#2ecc71');
+                mostrarAvisoNube();
+            }
+        }, err => console.warn('Escucha de la nube interrumpida:', err));
     }
 
     function forzarGuardadoManual() {
@@ -729,6 +810,8 @@
             let snap = await DOC_REF.get();
             if (snap.exists && snap.data() && Array.isArray(snap.data().productos)) {
                 db = snap.data();
+                ultimoSync = snapshotClaves(db);
+                nubeCargada = true;
                 normalizarDB();
                 localStorage.setItem('mjp3_db_cache', JSON.stringify(db));
                 actualizarIndicador('☁️ Sincronizado', '#2ecc71');
@@ -750,13 +833,18 @@
             let snap = await DOC_REF.get();
             if (snap.exists && snap.data() && Array.isArray(snap.data().productos)) {
                 db = snap.data();
+                ultimoSync = snapshotClaves(db);
+                nubeCargada = true;
             } else {
                 // Primera vez: no hay nada en la nube. Buscamos algo para migrar.
                 let cache = JSON.parse(localStorage.getItem('mjp3_db_cache') || 'null');
                 db = cache || cargarLegacyLocalStorage() || emptyDB();
                 normalizarDB();
                 await DOC_REF.set(db);
+                ultimoSync = snapshotClaves(db);
+                nubeCargada = true;
                 terminarCarga(true);
+                iniciarEscuchaNube();
                 return;
             }
         } catch(e) {
@@ -768,12 +856,14 @@
 
         try {
             normalizarDB();
+            if (!nubeCargada) cacheArranque = snapshotClaves(db);
             if (actualizados > 0 && firebaseListo) saveDB();
         } catch(e) {
             console.warn('Error normalizando datos, se muestra igual con lo que haya:', e);
         }
 
         terminarCarga(cloudOk);
+        iniciarEscuchaNube();
     }
 
     let appYaArranco = false;
@@ -797,8 +887,10 @@
                 let cache = JSON.parse(localStorage.getItem('mjp3_db_cache') || 'null');
                 db = cache || cargarLegacyLocalStorage() || emptyDB();
                 normalizarDB();
+                if (!nubeCargada) cacheArranque = snapshotClaves(db);
             } catch(e) { console.warn('Error en el arranque de emergencia:', e); }
             terminarCarga(false);
+            iniciarEscuchaNube();
         }
     }, 10000);
 
@@ -890,6 +982,7 @@
     }
 
     function nav(pageId) {
+        paginaActualId = pageId;
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.getElementById(pageId).classList.add('active');
         window.scrollTo(0,0);

@@ -22,6 +22,8 @@ if (typeof pdfjsLib !== 'undefined') {
 }
 
 let m1_resultadosRevisionPrecios = [];
+// Por cada línea del PDF guardamos los fragmentos con su posición horizontal y el encabezado de columnas vigente.
+let m1_pdfPosiciones = {};
 
 // --- Lectura del PDF ---
 async function m1_procesarPDFProveedor(event) {
@@ -40,36 +42,50 @@ async function m1_procesarPDFProveedor(event) {
     }
 }
 
+// Agrupa fragmentos (con x, y) en filas: mismo renglón = Y muy parecida. Tolerancia de 6 para que el nombre
+// y el precio de un producto (que a veces quedan 4-5 puntos desfasados) caigan en la misma fila.
+function m1_agruparFilas(items) {
+    items.sort((a, b) => b.y - a.y || a.x - b.x);
+    let filas = [];
+    let filaActual = [];
+    let yActual = null;
+    items.forEach(it => {
+        if (yActual === null || Math.abs(it.y - yActual) < 6) {
+            filaActual.push(it);
+            if (yActual === null) yActual = it.y;
+        } else {
+            filas.push(filaActual);
+            filaActual = [it];
+            yActual = it.y;
+        }
+    });
+    if (filaActual.length) filas.push(filaActual);
+    return filas;
+}
+
 // Agrupa los fragmentos de texto del PDF en "líneas" según su posición vertical (Y),
 // y dentro de cada línea los ordena de izquierda a derecha (X). Así reconstruimos
 // filas de tabla aunque el PDF no tenga una estructura de tabla real.
 async function m1_extraerLineasDePDF(pdfDoc) {
     let lineas = [];
+    m1_pdfPosiciones = {};
+    let headerActual = null;
     for (let p = 1; p <= pdfDoc.numPages; p++) {
         let page = await pdfDoc.getPage(p);
         let content = await page.getTextContent();
-        let items = content.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5] }));
-        items.sort((a, b) => b.y - a.y || a.x - b.x);
-
-        let filas = [];
-        let filaActual = [];
-        let yActual = null;
-        items.forEach(it => {
-            if (yActual === null || Math.abs(it.y - yActual) < 4) {
-                filaActual.push(it);
-                if (yActual === null) yActual = it.y;
-            } else {
-                filas.push(filaActual);
-                filaActual = [it];
-                yActual = it.y;
-            }
-        });
-        if (filaActual.length) filas.push(filaActual);
+        let items = content.items.filter(it => it.str && it.str.trim() !== '').map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5], cx: it.transform[4] + (it.width || 0) / 2 }));
+        let filas = m1_agruparFilas(items);
 
         filas.forEach(fila => {
             fila.sort((a, b) => a.x - b.x);
             let texto = fila.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
-            if (texto) lineas.push(texto);
+            if (!texto) return;
+            lineas.push(texto);
+            // ¿Es la fila de encabezados de columnas (Original / 5kg / 1kg / 500gr ...)?
+            if (texto.indexOf('$') === -1 && /\b1\s?kg\b/i.test(texto) && /(5\s?kg|500|original|250|100)/i.test(texto)) {
+                headerActual = m1_unirTokensEncabezado(fila);
+            }
+            m1_pdfPosiciones[texto] = { items: fila, header: headerActual };
         });
     }
     return lineas;
@@ -103,7 +119,68 @@ function m1_parsearLineaProducto(linea) {
     return { nombre: nombreLimpio, montos: montos };
 }
 
-// --- Analiza todo el texto pegado/extraído y arma la lista de coincidencias ---
+// Columnas de tamaño del encabezado (5KG / 1KG / 500gr ...). Une "ENVASE" con su tamaño para centrar
+// la columna, y agrega la columna "original" (la primera de precios) que no tiene tamaño en el título.
+function m1_unirTokensEncabezado(fila) {
+    let cols = [];
+    let envase = null;
+    let reTam = /(\d+(?:[.,]\d+)?)\s?(kg|kgs|gr|grs|g)\.?$/i;
+    fila.forEach(it => {
+        let s = it.str.trim();
+        if (/^envase$/i.test(s)) { envase = it; return; }
+        let ult = cols.length ? cols[cols.length - 1] : null;
+        if (/^(kg|kgs|gr|grs|g)\.?$/i.test(s) && ult && /^\d+([.,]\d+)?$/.test(ult.str) && ult.pendiente) {
+            ult.str += s; ult.cx = (ult.cx + it.cx) / 2; ult.pendiente = false; return;
+        }
+        if (reTam.test(s)) {
+            cols.push({ str: s, cx: envase ? (envase.cx + it.cx) / 2 : it.cx });
+            envase = null;
+        } else if (/^\d+([.,]\d+)?$/.test(s)) {
+            cols.push({ str: s, cx: envase ? (envase.cx + it.cx) / 2 : it.cx, pendiente: true });
+            envase = null;
+        }
+    });
+    cols = cols.filter(c => !c.pendiente);
+    if (cols.length >= 2) {
+        let d = cols[1].cx - cols[0].cx;
+        if (d > 0) cols.unshift({ str: 'original', cx: cols[0].cx - d });
+    }
+    return cols;
+}
+
+// Precios ($) de una fila con la posición horizontal de cada uno.
+function m1_preciosConPosicion(items) {
+    let precios = [];
+    let esperaNumero = false;
+    items.forEach(it => {
+        let s = it.str.trim();
+        if (s === '$') { esperaNumero = true; return; }
+        let m = s.match(/^\$?\s?(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d+)?$/);
+        if (m && (s.indexOf('$') > -1 || esperaNumero)) {
+            let valor = parseInt(m[1].replace(/\./g, ''), 10);
+            if (!isNaN(valor) && valor > 0) precios.push({ valor: valor, cx: it.cx });
+        }
+        esperaNumero = false;
+    });
+    return precios;
+}
+
+// Devuelve el precio de la columna "1kg" usando la posición, o null si no se puede ubicar.
+function m1_precioColumna1kg(pos) {
+    if (!pos || !pos.header) return null;
+    let cols = pos.header;
+    let idx1 = cols.findIndex(c => /(^|\D)1\s?kg\.?$/i.test(c.str));
+    if (idx1 < 0) return null;
+    let precios = m1_preciosConPosicion(pos.items);
+    for (let k = 0; k < precios.length; k++) {
+        let mejor = 0, mejorD = Infinity;
+        cols.forEach((c, i) => { let d = Math.abs(c.cx - precios[k].cx); if (d < mejorD) { mejorD = d; mejor = i; } });
+        if (mejor === idx1) return precios[k].valor;
+    }
+    return null; // la fila no tiene precio en la columna 1kg
+}
+
+// --- Analiza todo el texto pegado/extraído y arma la lista de coincidencias (en el orden del PDF) ---
 function m1_analizarTextoProveedor() {
     let texto = document.getElementById('m1-texto-proveedor').value;
     if (!texto.trim()) return alert("⚠️ Subí un PDF o pegá el texto primero.");
@@ -131,21 +208,32 @@ function m1_analizarTextoProveedor() {
         idsEncontrados[producto.id] = true;
 
         let costoActual = producto.costo || 0;
-        let mejor = parsed.montos[0];
-        let mejorDif = Math.abs(mejor - costoActual);
-        parsed.montos.forEach(monto => {
-            let dif = Math.abs(monto - costoActual);
-            if (dif < mejorDif) { mejor = monto; mejorDif = dif; }
-        });
+
+        // 1) Precio de la columna 1kg según su posición en el PDF
+        let pos = m1_pdfPosiciones[linea.trim()];
+        let precio1kg = m1_precioColumna1kg(pos);
+        let mejor, fuente;
+        if (precio1kg) {
+            mejor = precio1kg; fuente = '1kg';
+        } else {
+            // 2) Plan B (texto pegado o PDF sin encabezado reconocible): el valor más parecido al costo actual
+            mejor = parsed.montos[0];
+            let mejorDif = Math.abs(mejor - costoActual);
+            parsed.montos.forEach(monto => {
+                let dif = Math.abs(monto - costoActual);
+                if (dif < mejorDif) { mejor = monto; mejorDif = dif; }
+            });
+            fuente = 'aprox';
+        }
 
         resultados.push({
             id: producto.id, nombre: producto.nombre,
             costoActual: costoActual, costoSugerido: mejor,
-            montosDetectados: parsed.montos
+            montosDetectados: parsed.montos, fuente: fuente
         });
     });
 
-    resultados.sort((a, b) => a.nombre.localeCompare(b.nombre));
+    // Se muestran en el mismo orden en que vienen en la lista del proveedor (sin ordenar por nombre).
     m1_renderRevisionPrecios(resultados);
 }
 
@@ -158,7 +246,7 @@ function m1_renderRevisionPrecios(resultados) {
         return;
     }
 
-    let html = `<p style="font-size:12px; color:#555;">Se encontraron <b>${resultados.length}</b> producto(s). El precio "Nuevo" es una sugerencia (el valor más parecido al que ya tenías) — revisalo, editalo si hace falta, y confirmá con el check cuáles aplicar. Si subió mucho, tocá "👁️ Ver impacto" antes de aplicar para ver cómo queda en cada lista.</p>
+    let html = `<p style="font-size:12px; color:#555;">Se encontraron <b>${resultados.length}</b> producto(s). El precio "Nuevo" se toma de la columna <b>1kg</b> de la lista del proveedor, en el mismo orden del PDF — revisalo, editalo si hace falta, y confirmá con el check cuáles aplicar. Si subió mucho, tocá "👁️ Ver impacto" antes de aplicar para ver cómo queda en cada lista.</p>
     <div class="table-responsive"><table>
         <thead><tr><th>Producto</th><th>Actual</th><th>Nuevo</th><th>✓</th><th></th></tr></thead>
         <tbody>`;
@@ -166,7 +254,8 @@ function m1_renderRevisionPrecios(resultados) {
     resultados.forEach((r, idx) => {
         let cambio = r.costoSugerido !== r.costoActual;
         let colorTexto = cambio ? (r.costoSugerido > r.costoActual ? 'color:var(--danger);' : 'color:var(--success);') : '';
-        let otrosMontos = r.montosDetectados.length > 1 ? `<div style="font-size:9px; color:#999;">Otros detectados: ${r.montosDetectados.filter(m => m !== r.costoSugerido).map(m => '$' + m).join(', ')}</div>` : '';
+        let notaFuente = r.fuente === '1kg' ? '' : '<div style="font-size:9px; color:#e67e22;">⚠️ No se ubicó la columna 1kg: revisá este precio</div>';
+        let otrosMontos = notaFuente + (r.montosDetectados.length > 1 ? `<div style="font-size:9px; color:#999;">Otros detectados: ${r.montosDetectados.filter(m => m !== r.costoSugerido).map(m => '$' + m).join(', ')}</div>` : '');
 
         html += `<tr>
             <td style="text-align:left; font-size:11px;">${r.nombre}${otrosMontos}</td>
