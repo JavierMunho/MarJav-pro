@@ -29,6 +29,13 @@
   Elegí la versión que tenga <b>más ventas / visitas / pedidos de hoy</b>. Antes de restaurar, se descarga automáticamente una copia de lo que hay ahora en la nube.
 </div>
 
+<h2>0) Restaurar desde un archivo de respaldo</h2>
+<div class="card">
+  Elegí un archivo <b>marjav_respaldo_...json</b> (por ejemplo el que se descargó solo como "ANTES_de_restaurar").
+  <input type="file" accept=".json,application/json" onchange="cargarArchivo(event)" style="display:block; margin-top:8px;">
+  <div id="archivo-box" style="margin-top:10px;"></div>
+</div>
+
 <h2>1) Copia guardada en ESTE dispositivo</h2>
 <div class="card" id="local-box">Buscando...</div>
 
@@ -141,6 +148,20 @@ async function buscarVersiones() {
     '<small>En verde la que tiene más movimientos. Si la versión de "ahora" tiene menos que una anterior, esa anterior es la que perdió datos.</small>';
 }
 
+function cargarArchivo(ev) {
+  let file = ev.target.files[0]; if (!file) return;
+  let rd = new FileReader();
+  rd.onload = () => {
+    try {
+      let d = JSON.parse(rd.result);
+      if (!d || !Array.isArray(d.productos)) throw new Error('el archivo no parece un respaldo de marJav Pro');
+      candidatos['archivo'] = d;
+      document.getElementById('archivo-box').innerHTML = tabla(fila('archivo', file.name, d, false));
+    } catch (e) { document.getElementById('archivo-box').textContent = 'No se pudo leer el archivo: ' + e.message; }
+  };
+  rd.readAsText(file);
+}
+
 function bajar(id) {
   let d = candidatos[id]; if (!d) return;
   descargar('marjav_respaldo_' + id + '_' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json', d);
@@ -149,6 +170,14 @@ function bajar(id) {
 async function restaurar(id) {
   let d = candidatos[id]; if (!d) return;
   let r = resumen(d);
+  // Protección: avisar fuerte si la versión elegida tiene MENOS datos que lo que hay hoy en la nube.
+  try {
+    let hoy = await leerVersion(0);
+    let rh = resumen(hoy);
+    if (puntaje(r) < puntaje(rh) || r.clientes < rh.clientes) {
+      if (!confirm('⚠️ CUIDADO: esta versión tiene MENOS datos que la nube actual.\n\nElegida: ' + r.ventas + ' ventas, ' + r.visitas + ' visitas, ' + r.gastos + ' gastos, ' + r.clientes + ' clientes.\nNube ahora: ' + rh.ventas + ' ventas, ' + rh.visitas + ' visitas, ' + rh.gastos + ' gastos, ' + rh.clientes + ' clientes.\n\n¿Seguro que querés reemplazar la nube por la versión con menos datos?')) return;
+    }
+  } catch (e) { /* si no se puede comparar, sigue con la confirmación normal */ }
   if (!confirm('Vas a dejar en la nube esta versión:\n' + r.ventas + ' ventas, ' + r.visitas + ' visitas, ' + r.gastos + ' gastos, ' + r.pendientes + ' conteos pendientes.\n\nAntes se descarga una copia de lo que hay ahora. ¿Continuar?')) return;
   try {
     let actual = await leerVersion(0);
