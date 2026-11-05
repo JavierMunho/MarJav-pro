@@ -170,6 +170,7 @@
             <button class="btn btn-success" style="margin-top:0; padding:18px; font-size:16px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="forzarGuardadoManual()">💾 GUARDAR TODOS LOS CAMBIOS</button>
             <button class="btn btn-outline" style="margin-top:0; padding:14px; font-size:14px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="actualizarDesdeNube()">🔄 Actualizar (traer últimos cambios)</button>
             <button class="btn btn-info" style="margin-top:0; padding:16px; font-size:15px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="exportarTodoExcel()">📊 EXPORTAR TODO A EXCEL (.xlsx)</button>
+            <div id="panel-respaldos"></div>
             <div class="menu-card" style="border-color: var(--info);" onclick="nav('page-m1')">
                 <h2 style="color: var(--info);">Módulo 1: Listas y Proveedor</h2>
                 <p>Catálogo base, ocultado y exportación a WhatsApp/PDF</p>
@@ -254,13 +255,18 @@
 
             <div id="m1-accion-combo" style="display:none;">
             <div class="section" style="background:#fff3cd; border-color:#ffe69c;">
-                <h3 class="section-title" style="color:#856404; border-bottom-color:#ffe69c;">🎁 Armar Combo / Oferta</h3>
+                <h3 class="section-title" style="color:#856404; border-bottom-color:#ffe69c;">🎁 Combos / Ofertas</h3>
+                <div id="m1-combos-existentes" style="margin-bottom:14px;"></div>
+                <h4 style="margin:10px 0 6px; color:#856404;">Armar o editar combo</h4>
+                <div id="m1-combo-edicion" style="display:none; background:#fff; border:1px solid #e67e22; border-radius:8px; padding:8px; font-size:12px; margin-bottom:8px;"></div>
                 <div class="grid-2">
                     <div><label>Nombre del Combo:</label><input type="text" id="m1-combo-nombre" placeholder="Ej: Combo Familiar"></div>
-                    <div><label>Margen (%):</label><input type="number" id="m1-combo-margen" placeholder="Ej: 40"></div>
+                    <div><label>Margen (%):</label><input type="number" id="m1-combo-margen" placeholder="Ej: 40" oninput="m1_comboRecalcular('margen')"></div>
                 </div>
-                <label>Costo de Envase ($, opcional):</label>
-                <input type="number" id="m1-combo-envase" placeholder="0.00">
+                <div class="grid-2">
+                    <div><label>Costo de Envase ($, opcional):</label><input type="number" id="m1-combo-envase" placeholder="0.00" oninput="m1_comboRecalcular('costo')"></div>
+                    <div><label>Precio final ($):</label><input type="number" id="m1-combo-precio" placeholder="se calcula solo" oninput="m1_comboRecalcular('precio')"></div>
+                </div>
 
                 <label style="margin-top:12px;">Agregar producto al combo:</label>
                 <select id="m1-combo-producto-select"></select>
@@ -271,7 +277,8 @@
 
                 <div id="m1-combo-ingredientes" style="margin-top:12px;"></div>
 
-                <button class="btn btn-accent" style="background:#e67e22; margin-top:15px;" onclick="m1_guardarCombo()">🎁 Calcular y Guardar Combo</button>
+                <button id="m1-combo-btn-guardar" class="btn btn-accent" style="background:#e67e22; margin-top:15px;" onclick="m1_guardarCombo()">🎁 Calcular y Guardar Combo</button>
+                <button id="m1-combo-btn-cancelar" class="btn btn-outline" style="display:none; margin-top:8px;" onclick="m1_cancelarEdicionCombo()">✖ Cancelar edición</button>
             </div>
             </div>
 
@@ -487,6 +494,7 @@
 
 <script src="modulo4-gastos.js"></script>
 <script src="modulo1-importar-precios.js"></script>
+<script src="respaldos.js"></script>
 <script src="modulo1-listas.js"></script>
 
 <script>
@@ -721,25 +729,37 @@
         }
         actualizarIndicador('💾 Guardando...', '#f1c40f');
         if (guardadoPendiente) clearTimeout(guardadoPendiente);
-        guardadoPendiente = setTimeout(() => {
-            guardadoPendiente = null;
-            let cambios = {}, firmas = {}, hay = false;
-            for (let k in db) {
-                let firma = JSON.stringify(db[k]);
-                if (firma !== ultimoSync[k]) { cambios[k] = db[k]; firmas[k] = firma; hay = true; }
-            }
-            if (!hay) { actualizarIndicador('☁️ Sincronizado', '#2ecc71'); return; }
-            DOC_REF.update(cambios).catch(err => {
-                if (err && err.code === 'not-found') return DOC_REF.set(db);
-                throw err;
-            }).then(() => {
-                for (let k in firmas) ultimoSync[k] = firmas[k];
-                actualizarIndicador('☁️ Sincronizado', '#2ecc71');
-            }).catch(err => {
-                console.warn('No se pudo sincronizar con la nube:', err);
-                actualizarIndicador('⚠️ Sin conexión (guardado local)', '#e67e22');
-            });
-        }, 700);
+        guardadoPendiente = setTimeout(() => { guardadoPendiente = null; subirCambios(); }, 700);
+    }
+
+    // Sube YA lo que esté pendiente (por secciones). Devuelve una promesa: true = quedó todo en la nube.
+    let subidaEnCurso = Promise.resolve(true);
+    function subirCambios() {
+        if (guardadoPendiente) { clearTimeout(guardadoPendiente); guardadoPendiente = null; }
+        subidaEnCurso = subidaEnCurso.then(_subirCambios, _subirCambios);
+        return subidaEnCurso;
+    }
+    async function _subirCambios() {
+        if (!firebaseListo || !DOC_REF || !nubeCargada) return false;
+        let cambios = {}, firmas = {}, hay = false;
+        for (let k in db) {
+            let firma = JSON.stringify(db[k]);
+            if (firma !== ultimoSync[k]) { cambios[k] = JSON.parse(firma); firmas[k] = firma; hay = true; }
+        }
+        if (!hay) { actualizarIndicador('☁️ Sincronizado', '#2ecc71'); return true; }
+        try {
+            if (typeof respaldosGuardia === 'function' && !(await respaldosGuardia(cambios))) { actualizarIndicador('⛔ Guardado frenado', '#c0392b'); return false; }
+            try { await DOC_REF.update(cambios); }
+            catch (err) { if (err && err.code === 'not-found') await DOC_REF.set(db); else throw err; }
+            for (let k in firmas) ultimoSync[k] = firmas[k];
+            actualizarIndicador('☁️ Sincronizado', '#2ecc71');
+            if (typeof rsGuardarConsignacion === 'function' && ('historial_consignacion' in firmas || 'stock_consignacion' in firmas || 'clientes' in firmas || 'conteos_pendientes' in firmas)) rsGuardarConsignacion();
+            return true;
+        } catch (err) {
+            console.warn('No se pudo sincronizar con la nube:', err);
+            actualizarIndicador('⚠️ Sin conexión (guardado local)', '#e67e22');
+            return false;
+        }
     }
 
     // Aviso (sin pisar lo que estés escribiendo) cuando llegan datos nuevos desde otro dispositivo.
@@ -798,15 +818,29 @@
         }, err => console.warn('Escucha de la nube interrumpida:', err));
     }
 
-    function forzarGuardadoManual() {
-        saveDB();
-        alert("✅ Cambios guardados. Se están sincronizando con la nube.");
+    async function forzarGuardadoManual() {
+        let ok = await subirCambios();
+        if (!ok) return alert("⚠️ No se pudo guardar en la nube (sin conexión o guardado frenado). Tus cambios siguen guardados en este dispositivo.");
+        if (typeof respaldoAlActualizar === 'function') await respaldoAlActualizar();
+        alert("✅ Guardado en la nube y respaldado.");
     }
 
     async function actualizarDesdeNube() {
         if (!firebaseListo || !DOC_REF) return alert("⚠️ No hay conexión con la nube ahora mismo.");
         try {
             actualizarIndicador('🔄 Actualizando...', '#f1c40f');
+            if (nubeCargada) {
+                // 1) Primero se sube lo que tengas pendiente, así nada se pierde
+                let ok = await subirCambios();
+                if (!ok) {
+                    actualizarIndicador('⚠️ Sin conexión (guardado local)', '#e67e22');
+                    return alert("⚠️ No se pudieron subir tus cambios a la nube. NO traje nada para no pisarlos. Revisá la conexión y probá de nuevo.");
+                }
+            } else if (!confirm("Esta app arrancó sin conexión. Traer lo de la nube reemplaza lo que cargaste sin conexión en este dispositivo. ¿Seguir?")) {
+                actualizarIndicador('⚠️ Modo local', '#e67e22');
+                return;
+            }
+            // 2) Se trae lo último de la nube
             let snap = await DOC_REF.get();
             if (snap.exists && snap.data() && Array.isArray(snap.data().productos)) {
                 db = snap.data();
@@ -814,9 +848,11 @@
                 nubeCargada = true;
                 normalizarDB();
                 localStorage.setItem('mjp3_db_cache', JSON.stringify(db));
+                // 3) Respaldo (últimos 4) + copia permanente de consignación
+                if (typeof respaldoAlActualizar === 'function') await respaldoAlActualizar();
                 actualizarIndicador('☁️ Sincronizado', '#2ecc71');
                 nav('page-dashboard');
-                alert("✅ Datos actualizados con lo último de la nube.");
+                alert("✅ Datos actualizados y respaldados en la nube.");
             } else {
                 actualizarIndicador('☁️ Sincronizado', '#2ecc71');
                 alert("No había datos nuevos para traer.");
@@ -874,6 +910,7 @@
         if (overlay) overlay.style.display = 'none';
         actualizarIndicador(conexionOk ? '☁️ Sincronizado' : '⚠️ Modo local (sin conexión)', conexionOk ? '#2ecc71' : '#e67e22');
         nav('page-dashboard');
+        if (conexionOk) setTimeout(() => { if (typeof rsRespaldoDiario === 'function') rsRespaldoDiario(); }, 3000);
     }
 
     // Seguro: si por cualquier motivo la app no terminó de cargar en 10 segundos
@@ -992,6 +1029,7 @@
             document.getElementById('m1-header-edicion').style.display = 'block';
             initM1();
         }
+        if(pageId === 'page-dashboard' && typeof renderPanelRespaldos === 'function') renderPanelRespaldos();
         if(pageId === 'page-m2') initM2();
         if(pageId === 'page-m3') initM3();
         if(pageId === 'page-m4') initM4();
@@ -1030,6 +1068,7 @@
         db.listas.forEach(l => sel.innerHTML += `<option value="${l.id}">${l.nombre} (Margen: ${l.margen}%)</option>`);
         m1_poblarSelectComboProductos();
         m1_renderIngredientesCombo();
+        m1_renderListadoCombos();
         if (typeof m1_renderListadoListas === 'function') m1_renderListadoListas();
     }
 
@@ -1067,7 +1106,8 @@
         document.getElementById('m1-prod-nombre').value = ''; document.getElementById('m1-prod-desc').value = ''; document.getElementById('m1-prod-costo').value = '';
     }
 
-    let m1_comboIngredientes = [];
+    let m1_comboIngredientes = [];   // [{productoId, cantidad, nombre}]  (el costo se calcula siempre con el costo ACTUAL del producto)
+    let m1_comboEditandoId = null;
 
     function m1_poblarSelectComboProductos() {
         let sel = document.getElementById('m1-combo-producto-select');
@@ -1091,85 +1131,235 @@
         sel.value = valorActual;
     }
 
+    // --- Cálculos de un ingrediente con el costo ACTUAL del producto ---
+    function m1_ingInfo(i) {
+        let p = db.productos.find(x => x.id === i.productoId);
+        if (!p) return { falta: true, costo: 0, texto: '', nombre: i.nombre || '(producto no encontrado)', unidad: false };
+        let c = i.cantidad || 0;
+        let costo = p.esUnidad ? (p.costo || 0) * c : ((p.costo || 0) / 1000) * c;
+        let texto = p.esUnidad ? `${c} unidad${c != 1 ? 'es' : ''} de`
+            : (c >= 1000 ? `${(c / 1000).toFixed(c % 1000 === 0 ? 0 : 2)}kg de` : `${c}g de`);
+        return { falta: false, costo: costo, texto: texto, nombre: p.nombre, unidad: !!p.esUnidad };
+    }
+    function m1_costoContenidoCombo(ings) { return ings.reduce((s, i) => s + m1_ingInfo(i).costo, 0); }
+    function m1_descripcionCombo(ings) { return ings.map(i => { let f = m1_ingInfo(i); return `${f.texto} ${f.nombre}`; }).join(' + '); }
+
+    // Combos viejos (hechos antes de guardar los componentes): se reconstruyen leyendo la descripción.
+    function m1_parsearDescripcionCombo(desc) {
+        let res = [];
+        String(desc || '').split(' + ').forEach(t => {
+            let m = t.trim().match(/^([\d.,]+)\s*(kg|g|unidades|unidad)\s+de\s+(.+)$/i);
+            if (!m) return;
+            let num = parseFloat(m[1].replace(',', '.'));
+            let u = m[2].toLowerCase();
+            let cant = u === 'kg' ? Math.round(num * 1000) : num;
+            let nombre = m[3].trim();
+            let p = db.productos.find(x => x.familia !== '🎁 Combos y Ofertas' && x.nombre.toLowerCase().trim() === nombre.toLowerCase());
+            res.push({ productoId: p ? p.id : '', cantidad: cant, nombre: nombre });
+        });
+        return res;
+    }
+
     function m1_agregarIngredienteCombo() {
         let pid = document.getElementById('m1-combo-producto-select').value;
         let cantidad = parseFloat(document.getElementById('m1-combo-cantidad').value);
         if (!pid) return alert("⚠️ Elegí un producto.");
         if (isNaN(cantidad) || cantidad <= 0) return alert("⚠️ Ingresá una cantidad válida.");
-
         let producto = db.productos.find(p => p.id === pid);
         if (!producto) return;
-
-        let costoCalculado, textoCantidad;
-        if (producto.esUnidad) {
-            costoCalculado = producto.costo * cantidad;
-            textoCantidad = `${cantidad} unidad${cantidad != 1 ? 'es' : ''} de`;
-        } else {
-            costoCalculado = (producto.costo / 1000) * cantidad;
-            textoCantidad = cantidad >= 1000 ? `${(cantidad / 1000).toFixed(cantidad % 1000 === 0 ? 0 : 2)}kg de` : `${cantidad}g de`;
-        }
-
-        m1_comboIngredientes.push({
-            productoId: pid, nombre: producto.nombre, textoCantidad: textoCantidad, costoCalculado: costoCalculado
-        });
-
+        m1_comboIngredientes.push({ productoId: pid, cantidad: cantidad, nombre: producto.nombre });
         document.getElementById('m1-combo-cantidad').value = '';
-        m1_renderIngredientesCombo();
+        m1_renderIngredientesCombo(); m1_comboRecalcular('costo');
     }
 
     function m1_quitarIngredienteCombo(idx) {
         m1_comboIngredientes.splice(idx, 1);
-        m1_renderIngredientesCombo();
+        m1_renderIngredientesCombo(); m1_comboRecalcular('costo');
+    }
+
+    function m1_cambiarCantidadIngrediente(idx, v) {
+        let n = parseFloat(v);
+        if (isNaN(n) || n <= 0) return;
+        m1_comboIngredientes[idx].cantidad = n;
+        m1_renderIngredientesCombo(); m1_comboRecalcular('costo');
     }
 
     function m1_renderIngredientesCombo() {
         let cont = document.getElementById('m1-combo-ingredientes');
+        if (!cont) return;
         if (m1_comboIngredientes.length === 0) {
             cont.innerHTML = '<p style="font-size:11px; color:#888;">Todavía no agregaste productos al combo.</p>';
             return;
         }
-        let costoTotal = m1_comboIngredientes.reduce((s, i) => s + i.costoCalculado, 0);
-        let html = m1_comboIngredientes.map((i, idx) => `
-            <div style="display:flex; justify-content:space-between; align-items:center; background:#fff; border-radius:6px; padding:8px 10px; margin-bottom:6px; border:1px solid #eee;">
-                <span style="font-size:12px;">${i.textoCantidad} <b>${i.nombre}</b> <span style="color:#888;">($${i.costoCalculado.toFixed(0)})</span></span>
-                <button onclick="m1_quitarIngredienteCombo(${idx})" style="background:none; border:none; color:var(--danger); font-size:14px; cursor:pointer;">🗑️</button>
-            </div>
-        `).join('');
-        html += `<div style="text-align:right; font-size:12px; color:#555; margin-top:6px;">Costo del contenido: <b>$${costoTotal.toFixed(0)}</b></div>`;
+        let html = m1_comboIngredientes.map((i, idx) => {
+            let f = m1_ingInfo(i);
+            let etiqueta = f.falta ? '<span style="color:var(--danger);">⚠️ no encontrado — borralo y agregalo de nuevo</span>' : (f.unidad ? 'unidades' : 'gramos');
+            return `
+            <div style="background:#fff; border-radius:6px; padding:8px 10px; margin-bottom:6px; border:1px solid #eee;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <b style="font-size:12px;">${f.nombre}</b>
+                    <button onclick="m1_quitarIngredienteCombo(${idx})" style="background:none; border:none; color:var(--danger); font-size:14px; cursor:pointer;">🗑️</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; margin-top:4px; font-size:12px;">
+                    <input type="number" value="${i.cantidad}" style="width:90px; padding:6px;" onchange="m1_cambiarCantidadIngrediente(${idx}, this.value)">
+                    <span>${etiqueta}</span>
+                    <span style="margin-left:auto; color:#888;">costo hoy: $${f.costo.toFixed(0)}</span>
+                </div>
+            </div>`;
+        }).join('');
+        html += `<div id="m1-combo-resumen" style="text-align:right; font-size:12px; color:#555; margin-top:6px;"></div>`;
         cont.innerHTML = html;
+        m1_comboRecalcular('resumen');
+    }
+
+    // origen: 'costo' (cambió contenido/envase) | 'margen' | 'precio' | 'resumen' (solo repinta el resumen)
+    function m1_comboRecalcular(origen) {
+        let envase = parseFloat(document.getElementById('m1-combo-envase').value) || 0;
+        let costoTotal = m1_costoContenidoCombo(m1_comboIngredientes) + envase;
+        let inM = document.getElementById('m1-combo-margen'), inP = document.getElementById('m1-combo-precio');
+        if (origen === 'costo' || origen === 'margen') {
+            let mp = parseFloat(inM.value);
+            if (!isNaN(mp) && costoTotal > 0) inP.value = redondear(costoTotal * (1 + mp / 100));
+        } else if (origen === 'precio') {
+            let pr = parseFloat(inP.value);
+            if (!isNaN(pr) && costoTotal > 0) inM.value = ((pr / costoTotal - 1) * 100).toFixed(1);
+        }
+        let r = document.getElementById('m1-combo-resumen');
+        if (r) {
+            let pr = parseFloat(inP.value);
+            let gan = (!isNaN(pr)) ? pr - costoTotal : 0;
+            r.innerHTML = `Contenido: <b>$${m1_costoContenidoCombo(m1_comboIngredientes).toFixed(0)}</b> + envase $${envase.toFixed(0)} = costo <b>$${costoTotal.toFixed(0)}</b>` +
+                (!isNaN(pr) ? `<br>Precio $${pr} → ganancia <b>$${gan.toFixed(0)}</b>` : '');
+        }
     }
 
     function m1_guardarCombo() {
-        let nom = document.getElementById('m1-combo-nombre').value;
+        let nom = document.getElementById('m1-combo-nombre').value.trim();
         let margenPct = parseFloat(document.getElementById('m1-combo-margen').value);
         let envase = parseFloat(document.getElementById('m1-combo-envase').value) || 0;
+        let precioIn = parseFloat(document.getElementById('m1-combo-precio').value);
 
         if (!nom) return alert("⚠️ Ingresá el nombre del combo.");
         if (m1_comboIngredientes.length === 0) return alert("⚠️ Agregá al menos un producto al combo.");
-        if (isNaN(margenPct)) return alert("⚠️ Ingresá el margen (%).");
+        if (isNaN(margenPct) && isNaN(precioIn)) return alert("⚠️ Ingresá el margen (%) o el precio final.");
+        if (m1_comboIngredientes.some(i => m1_ingInfo(i).falta) && !confirm("Hay productos que ya no existen en el combo (cuentan $0). ¿Guardar igual?")) return;
 
-        let costoContenido = m1_comboIngredientes.reduce((s, i) => s + i.costoCalculado, 0);
-        let costoTotal = costoContenido + envase;
-        let margen = 1 + (margenPct / 100);
-        let precioFinal = redondear(costoTotal * margen);
-
-        let descripcionAuto = m1_comboIngredientes.map(i => `${i.textoCantidad} ${i.nombre}`).join(' + ');
+        let costoTotal = m1_costoContenidoCombo(m1_comboIngredientes) + envase;
+        let precioFinal = !isNaN(precioIn) ? precioIn : redondear(costoTotal * (1 + margenPct / 100));
+        if (isNaN(margenPct)) margenPct = costoTotal > 0 ? (precioFinal / costoTotal - 1) * 100 : 0;
+        let descripcionAuto = m1_descripcionCombo(m1_comboIngredientes);
+        let datosCombo = { ing: m1_comboIngredientes.map(i => ({ productoId: i.productoId, cantidad: i.cantidad, nombre: m1_ingInfo(i).nombre })), envase: envase, margenPct: margenPct };
 
         let fam = '🎁 Combos y Ofertas';
         if (!db.familias.includes(fam)) db.familias.unshift(fam);
-        let pId = Date.now().toString();
-        db.productos.push({ id: pId, nombre: nom, descripcion: descripcionAuto, familia: fam, costo: precioFinal, costoReal: costoTotal, esUnidad: true });
 
-        db.listas.forEach(l => { db.precios_manuales[`${l.id}_${pId}_unidad`] = precioFinal; });
+        if (m1_comboEditandoId) {
+            let p = db.productos.find(x => x.id === m1_comboEditandoId);
+            if (!p) return alert("⚠️ No encuentro el combo que estabas editando.");
+            let precioViejo = p.costo;
+            p.nombre = nom; p.descripcion = descripcionAuto; p.costo = precioFinal; p.costoReal = costoTotal; p.combo = datosCombo;
+            let cambiadas = 0, conservadas = 0;
+            db.listas.forEach(l => {
+                let k = `${l.id}_${p.id}_unidad`;
+                let actual = db.precios_manuales[k];
+                if (actual === undefined || actual === precioViejo) { db.precios_manuales[k] = precioFinal; cambiadas++; }
+                else conservadas++;
+            });
+            saveDB(); initM1(); m1_renderMatrizLista(true);
+            alert(`✅ Combo actualizado.\n\nCosto: $${costoTotal.toFixed(0)}\nPrecio: $${precioFinal}` + (precioViejo !== precioFinal ? ` (antes $${precioViejo})` : '') +
+                `\n\nListas actualizadas: ${cambiadas}` + (conservadas ? `\nListas con precio puesto a mano que NO toqué: ${conservadas}` : ''));
+        } else {
+            let pId = Date.now().toString();
+            db.productos.push({ id: pId, nombre: nom, descripcion: descripcionAuto, familia: fam, costo: precioFinal, costoReal: costoTotal, esUnidad: true, combo: datosCombo });
+            db.listas.forEach(l => { db.precios_manuales[`${l.id}_${pId}_unidad`] = precioFinal; });
+            saveDB(); initM1(); m1_renderMatrizLista(true);
+            alert(`✅ Combo creado.\n\nCosto total (contenido + envase): $${costoTotal.toFixed(0)}\nPrecio final: $${precioFinal}\n\nDescripción automática:\n${descripcionAuto}`);
+        }
+        m1_cancelarEdicionCombo();
+    }
 
-        saveDB(); initM1(); m1_renderMatrizLista(true);
-        alert(`✅ Combo creado.\n\nCosto total (contenido + envase): $${costoTotal.toFixed(0)}\nPrecio final con margen: $${precioFinal}\n\nDescripción automática:\n${descripcionAuto}`);
-
-        document.getElementById('m1-combo-nombre').value = '';
-        document.getElementById('m1-combo-margen').value = '';
-        document.getElementById('m1-combo-envase').value = '';
-        m1_comboIngredientes = [];
+    // --- Editar combos ya hechos ---
+    function m1_editarCombo(pid) {
+        let p = db.productos.find(x => x.id === pid);
+        if (!p) return;
+        m1_comboEditandoId = pid;
+        let ings, envase, margen;
+        if (p.combo && Array.isArray(p.combo.ing)) {
+            ings = p.combo.ing.map(x => ({ productoId: x.productoId, cantidad: x.cantidad, nombre: x.nombre }));
+            envase = p.combo.envase || 0; margen = p.combo.margenPct;
+        } else {
+            ings = m1_parsearDescripcionCombo(p.descripcion);
+            envase = 0;
+            let cr = p.costoReal || 0;
+            margen = cr > 0 ? ((p.costo / cr - 1) * 100) : '';
+        }
+        m1_comboIngredientes = ings;
+        document.getElementById('m1-combo-nombre').value = p.nombre;
+        document.getElementById('m1-combo-envase').value = envase || '';
+        document.getElementById('m1-combo-margen').value = (margen === '' || margen === undefined) ? '' : Number(margen).toFixed(1);
+        document.getElementById('m1-combo-precio').value = p.costo;
+        let ban = document.getElementById('m1-combo-edicion');
+        ban.style.display = 'block';
+        let aviso = (p.combo ? '' : `<br><span style="color:#c0392b;">Este combo es viejo: reconstruí los componentes desde la descripción${ings.length ? '' : ' (no pude leerlos, agregalos de nuevo)'}. Revisá cantidades y el <b>envase</b> (antes el costo guardado era $${(p.costoReal || 0).toFixed(0)}).</span>`);
+        ban.innerHTML = `✏️ Editando: <b>${p.nombre}</b> — precio actual $${p.costo}${aviso}`;
+        document.getElementById('m1-combo-btn-guardar').textContent = '💾 Guardar cambios del combo';
+        document.getElementById('m1-combo-btn-cancelar').style.display = 'block';
         m1_renderIngredientesCombo();
+        m1_mostrarAccion('combo');
+        document.getElementById('m1-accion-combo').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function m1_cancelarEdicionCombo() {
+        m1_comboEditandoId = null;
+        m1_comboIngredientes = [];
+        ['m1-combo-nombre', 'm1-combo-margen', 'm1-combo-envase', 'm1-combo-precio'].forEach(id => { let e = document.getElementById(id); if (e) e.value = ''; });
+        let ban = document.getElementById('m1-combo-edicion'); if (ban) ban.style.display = 'none';
+        let b = document.getElementById('m1-combo-btn-guardar'); if (b) b.textContent = '🎁 Calcular y Guardar Combo';
+        let c = document.getElementById('m1-combo-btn-cancelar'); if (c) c.style.display = 'none';
+        m1_renderIngredientesCombo();
+    }
+
+    function m1_renderListadoCombos() {
+        let cont = document.getElementById('m1-combos-existentes');
+        if (!cont) return;
+        let combos = db.productos.filter(p => p.familia === '🎁 Combos y Ofertas');
+        if (!combos.length) { cont.innerHTML = '<p style="font-size:11px; color:#888;">Todavía no hay combos hechos.</p>'; return; }
+        cont.innerHTML = combos.map(p => {
+            let ings = (p.combo && p.combo.ing) ? p.combo.ing : null;
+            let costoHoy = ings ? m1_costoContenidoCombo(ings) + (p.combo.envase || 0) : null;
+            let desact = (costoHoy !== null && Math.abs(costoHoy - (p.costoReal || 0)) > 0.5)
+                ? `<br><span style="color:#c0392b; font-size:11px;">⚠️ Los costos cambiaron: hoy cuesta $${costoHoy.toFixed(0)} (guardado $${(p.costoReal || 0).toFixed(0)})</span>` : '';
+            let nota = ings ? '' : `<br><span style="font-size:11px; color:#888;">Combo viejo: al editarlo se reconstruyen los componentes</span>`;
+            return `<div class="card-item" style="border-left-color:#e67e22;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div style="font-size:12px;"><b>${p.nombre}</b> — $${p.costo}<br><span style="color:#888;">${p.descripcion || ''}</span>${desact}${nota}</div>
+                    <button onclick="m1_editarCombo('${p.id}')" style="background:var(--info); color:white; border:none; border-radius:6px; padding:8px 12px; font-size:12px; font-weight:bold; cursor:pointer; white-space:nowrap;">✏️ Editar</button>
+                </div></div>`;
+        }).join('') + `<button class="btn btn-outline" style="margin-top:6px;" onclick="m1_recalcularTodosCombos()">🔄 Actualizar costos y precios de todos los combos</button>
+            <small style="color:#888;">Recalcula con los costos de hoy, manteniendo el margen de cada combo. Solo los combos con componentes guardados (los viejos: abrilos y guardalos una vez).</small>`;
+    }
+
+    function m1_recalcularTodosCombos() {
+        let lista = [];
+        db.productos.filter(p => p.familia === '🎁 Combos y Ofertas' && p.combo && Array.isArray(p.combo.ing)).forEach(p => {
+            let costo = m1_costoContenidoCombo(p.combo.ing) + (p.combo.envase || 0);
+            let precio = redondear(costo * (1 + (p.combo.margenPct || 0) / 100));
+            if (Math.abs(costo - (p.costoReal || 0)) > 0.5 || precio !== p.costo) lista.push({ p, costo, precio });
+        });
+        if (!lista.length) return alert("Todos los combos ya están al día con los costos actuales.");
+        let det = lista.map(x => `• ${x.p.nombre}: $${x.p.costo} → $${x.precio}`).join('\n');
+        if (!confirm(`Se van a actualizar ${lista.length} combo(s):\n\n${det}\n\nSolo cambia el precio de las listas donde el combo tenía el precio automático. ¿Seguir?`)) return;
+        lista.forEach(x => {
+            let viejo = x.p.costo;
+            x.p.costoReal = x.costo; x.p.costo = x.precio;
+            x.p.descripcion = m1_descripcionCombo(x.p.combo.ing);
+            db.listas.forEach(l => {
+                let k = `${l.id}_${x.p.id}_unidad`, a = db.precios_manuales[k];
+                if (a === undefined || a === viejo) db.precios_manuales[k] = x.precio;
+            });
+        });
+        saveDB(); initM1(); m1_renderMatrizLista(true);
+        alert(`✅ ${lista.length} combo(s) actualizados.`);
     }
 
     function m1_crearLista() {
